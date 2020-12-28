@@ -48,9 +48,10 @@ z = KnotPoint(x,u,dt)
 
 # Evaluate the continuous dynamics and Jacobian
 ẋ = dynamics(model, x, u)
-∇f = RobotDynamics.DynamicsJacobian(model)
-jacobian!(∇f, model, z)
+∇f = RobotDynamics.DynamicsJacobian(model)   # only allocate memory
+jacobian!(∇f, model, z)   # calls jacobian in integration.jl
 
 # Evaluate the discrete dynamics and Jacobian
 x′ = discrete_dynamics(RK3, model, z)
 discrete_jacobian!(RK3, ∇f, model, z)
+println(x′)

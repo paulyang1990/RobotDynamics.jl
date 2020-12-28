@@ -59,6 +59,7 @@ export
 # integration
 export
     QuadratureRule,
+    Euler,
     RK2,
     RK3,
     RK4,
