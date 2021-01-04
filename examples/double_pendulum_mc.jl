@@ -22,7 +22,7 @@ end
 DoublePendulumMC() = DoublePendulumMC{Float64}(1.0, 1.0)
 
 # define implicit dynamics propogation
-function dynamicsCon(model::DoublePendulumMC, x)
+function dynamics_con(model::DoublePendulumMC, x)
   l1 = model.l1
   l2 = model.l2
   d1 = .5*l1*[cos(x[3]);sin(x[3])]
@@ -31,7 +31,13 @@ function dynamicsCon(model::DoublePendulumMC, x)
           (x[1:2]+d1) - (x[4:5]-d2)]
 end
 
-function RobotDynamics.integrate(::Type{Euler}, model::DoublePendulumMC, x::StaticVector, u::StaticVector, t, dt)
+function discrete_dynamics_MC(::Type{Q}, 
+  model::DoublePendulumMC, z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
+
+  x = state(z) 
+  u = control(z)
+  t = z.t 
+  dt = z.dt
 
   m1 = model.m1
   m2 = model.m2
@@ -49,8 +55,8 @@ function RobotDynamics.integrate(::Type{Euler}, model::DoublePendulumMC, x::Stat
 
   max_iters = 1000
   for i=1:max_iters      
-      c = dynamicsCon(model, q⁺)
-      curry(xs) = dynamicsCon(model, xs)
+      c = dynamics_con(model, q⁺)
+      curry(xs) = dynamics_con(model, xs)
       J = ForwardDiff.jacobian(curry, q⁺)   # curry function 
       F = [0; -m1*g; u[1]-u[2];0; -m2*g; u[2]] * dt
 
@@ -76,10 +82,27 @@ function RobotDynamics.integrate(::Type{Euler}, model::DoublePendulumMC, x::Stat
       q⁺ = q + v⁺*dt
   end
   return [q⁺; v⁺], λ 
+  # return [q⁺; v⁺] 
   
 end
 
+function discrete_jacobian_MC!(::Type{Q}, ∇f, model::DoublePendulumMC,
+  z::AbstractKnotPoint{T,N,M}) where {T,N,M,Q<:RobotDynamics.Explicit}
 
+
+end
+
+function RobotDynamics.discrete_dynamics(::Type{Q}, model::DoublePendulumMC, 
+  z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
+  x, λ = discrete_dynamics_MC(Q, model, z)
+  return x
+end
+
+function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::DoublePendulumMC,
+  z::AbstractKnotPoint{T,N,M}) where {T,N,M,Q<:RobotDynamics.Explicit}
+
+
+end
 
 # Specify the state and control dimensions
 RobotDynamics.state_dim(::DoublePendulumMC) = 12
