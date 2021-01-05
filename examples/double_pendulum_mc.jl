@@ -89,6 +89,9 @@ end
 function discrete_jacobian_MC!(::Type{Q}, ∇f, model::DoublePendulumMC,
   z::AbstractKnotPoint{T,N,M}) where {T,N,M,Q<:RobotDynamics.Explicit}
 
+  x, λ = discrete_dynamics_MC(Q, model, z)
+
+  #take diff wrt x, \lambda 
 
 end
 
@@ -102,6 +105,11 @@ function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::DoublePendulum
   z::AbstractKnotPoint{T,N,M}) where {T,N,M,Q<:RobotDynamics.Explicit}
 
 
+end
+
+function TrajectoryOptimization.dynamics_expansion!(Q, D::Vector{<:DynamicsExpansion}, model::AbstractModel,
+  # x, λ = discrete_dynamics_MC(Q, model, z)
+  # A,B,C,G = discrete_jacobian_MC(Q, model x,  λ)
 end
 
 # Specify the state and control dimensions
@@ -122,4 +130,7 @@ z = KnotPoint(x,u,dt)
 x′ = discrete_dynamics(Euler, model, z)
 println(x)
 println(x′)
+
+# roll out test cases
+# expansion test cases
 
