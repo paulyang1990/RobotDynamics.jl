@@ -13,6 +13,7 @@ using StaticArrays: SUnitRange
 export
     AbstractModel,
     DynamicsExpansion,
+    DynamicsExpansionMC,
     dynamics,
     jacobian!,
     discrete_dynamics,

@@ -1,7 +1,11 @@
 using RobotDynamics
+using TrajectoryOptimization
 using StaticArrays
 using LinearAlgebra
 using ForwardDiff
+
+const TO = TrajectoryOptimization
+const RD = RobotDynamics
 
 # Define the model struct with parameters
 struct DoublePendulumMC{T} <: AbstractModel
@@ -15,8 +19,11 @@ struct DoublePendulumMC{T} <: AbstractModel
   
   g::T
 
+  # constraint force dimension
+  p::Int 
+
   function DoublePendulumMC{T}(m::T, l::T) where {T<:Real} 
-    new(m,l,m,l,9.81)
+    new(m,l,m,l,9.81, 4)
   end 
 end
 DoublePendulumMC() = DoublePendulumMC{Float64}(1.0, 1.0)
@@ -137,13 +144,13 @@ function discrete_jacobian_MC(::Type{Q}, model::DoublePendulumMC,
   return A,B,C,G
 end
 
-function RobotDynamics.discrete_dynamics(::Type{Q}, model::DoublePendulumMC, 
+function RD.discrete_dynamics(::Type{Q}, model::DoublePendulumMC, 
   z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
   x, λ = discrete_dynamics_MC(Q, model, z)
   return x
 end
 
-function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::DoublePendulumMC,
+function RD.discrete_jacobian!(::Type{Q}, ∇f, model::DoublePendulumMC,
   z::AbstractKnotPoint{T,N,M}) where {T,N,M,Q<:RobotDynamics.Explicit}
 
 
@@ -155,12 +162,13 @@ end
 # end
 
 # Specify the state and control dimensions
-RobotDynamics.state_dim(::DoublePendulumMC) = 12
-RobotDynamics.control_dim(::DoublePendulumMC) = 2
+RD.state_dim(::DoublePendulumMC) = 12
+RD.control_dim(::DoublePendulumMC) = 2
 
 # Create the model
 model = DoublePendulumMC()
 n,m = size(model)
+p = 4 # constraint force size
 
 # Generate random state and control vector
 x,u = rand(model)
@@ -183,7 +191,7 @@ d2 = .5*model.l2*[cos(th2);sin(th2)]
 x0 = [d1; th1; 2*d1 + d2; th2; zeros(6)]
 N = 200
 Z = Traj(n, m, dt, N)
-RobotDynamics.rollout!(RK2, model, Z, x0)
+RD.rollout!(RK2, model, Z, x0)
 
 # plot
 using Plots
@@ -192,5 +200,23 @@ th1 = [X[t][3] for t = 1:N]
 th2 = [X[t][6] for t = 1:N]
 plot([th1 th2]*180/pi)
 
+@inline TO.DynamicsExpansionMC(model::DoublePendulumMC) = TO.DynamicsExpansionMC{Float64}(model)
+@inline function TO.DynamicsExpansionMC{T}(model::DoublePendulumMC) where T
+	n,m = size(model)
+	n̄ = state_diff_size(model)
+	TO.DynamicsExpansionMC{T}(n,n̄,m,model.p)
+end
+function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::DoublePendulumMC,
+  Z::Traj)
+  for k in eachindex(D)
+    D[k].A,D[k].B,D[k].C,D[k].G = discrete_jacobian_MC(Q, model, Z[k])
+
+  end
+end
+
+# dynamic expansion data structure 
+D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]
+TO.dynamics_expansion!(Euler, D, model, Z)
+# roll out test cases
 # expansion test cases
 
