@@ -12,6 +12,7 @@ using StaticArrays: SUnitRange
 
 export
     AbstractModel,
+    AbstractModelMC,
     DynamicsExpansion,
     DynamicsExpansionMC,
     dynamics,

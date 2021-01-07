@@ -8,7 +8,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 
 # Define the model struct with parameters
-struct DoublePendulumMC{T} <: AbstractModel
+struct DoublePendulumMC{T} <: AbstractModelMC
   # the first link 
   m1::T 
   l1::T
@@ -175,30 +175,30 @@ x,u = rand(model)
 dt = 0.01
 z = KnotPoint(x,u,dt)
 
-# Evaluate the discrete dynamics and Jacobian
-x′ = discrete_dynamics(PassThrough, model, z)
-println(x)
-println(x′)
+# # Evaluate the discrete dynamics and Jacobian
+# x′ = discrete_dynamics(PassThrough, model, z)
+# println(x)
+# println(x′)
 
-A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
-println(A)
+# A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
+# println(A)
 
-# rollout dynamics
-th1 = -pi/4
-th2 = -pi/4
-d1 = .5*model.l1*[cos(th1);sin(th1)]
-d2 = .5*model.l2*[cos(th2);sin(th2)]
-x0 = [d1; th1; 2*d1 + d2; th2; zeros(6)]
-N = 200
-Z = Traj(n, m, dt, N)
-RD.rollout!(RK2, model, Z, x0)
+# # rollout dynamics
+# th1 = -pi/4
+# th2 = -pi/4
+# d1 = .5*model.l1*[cos(th1);sin(th1)]
+# d2 = .5*model.l2*[cos(th2);sin(th2)]
+# x0 = [d1; th1; 2*d1 + d2; th2; zeros(6)]
+# N = 200
+# Z = Traj(n, m, dt, N)
+# RD.rollout!(Euler, model, Z, x0)
 
-# plot
-using Plots
-X = states(Z)
-th1 = [X[t][3] for t = 1:N]
-th2 = [X[t][6] for t = 1:N]
-plot([th1 th2]*180/pi)
+# # plot
+# using Plots
+# X = states(Z)
+# th1 = [X[t][3] for t = 1:N]
+# th2 = [X[t][6] for t = 1:N]
+# plot([th1 th2]*180/pi)
 
 @inline TO.DynamicsExpansionMC(model::DoublePendulumMC) = TO.DynamicsExpansionMC{Float64}(model)
 @inline function TO.DynamicsExpansionMC{T}(model::DoublePendulumMC) where T
@@ -214,9 +214,9 @@ function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::D
   end
 end
 
-# dynamic expansion data structure 
-D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]
-TO.dynamics_expansion!(Euler, D, model, Z)
-# roll out test cases
-# expansion test cases
+# # dynamic expansion data structure 
+# D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]
+# TO.dynamics_expansion!(Euler, D, model, Z)
+# # roll out test cases
+# # expansion test cases
 

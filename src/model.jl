@@ -29,6 +29,7 @@ ẋ = dynamics(model, x, u)
 n,m = size(model)
 """
 abstract type AbstractModel end
+abstract type AbstractModelMC <: AbstractModel end
 
 """
 	LieGroupModel <: AbstractModel
