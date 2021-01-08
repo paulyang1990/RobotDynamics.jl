@@ -1,4 +1,4 @@
-using Pkg; Pkg.activate(".")
+# using Pkg; Pkg.activate(".")
 
 using RobotDynamics
 using Altro
@@ -48,4 +48,4 @@ rollout!(solver)
 TO.cost!(solver.obj, solver.Z)
 TO.dynamics_expansion!(TO.integration(solver), solver.D, solver.model, solver.Z)
 TO.cost_expansion!(solver.quad_obj, solver.obj, solver.Z, true, true)
-ΔV = backwardpassMC!(solver)
+ΔV = Altro.backwardpass!(solver)

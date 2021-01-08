@@ -43,17 +43,19 @@ function backwardpassMC!(solver::iLQRSolver{T,QUAD,L,O,n,n̄,m}) where {T,QUAD<:
 
 end
 
-function _calc_ctg!(S, S⁺, cost_exp, dyn_exp, Ku, lu, Kλ, lλ)
+function _calc_ctg!(S, S⁺, cost_exp, dyn_exp, Ku, d, Kλ, dλ)
     A,B,C = dyn_exp.A, dyn_exp.B, dyn_exp.C
     Q,q,R,r,c = cost_exp.Q,cost_exp.q,cost_exp.R,cost_exp.r,cost_exp.c
     
     Abar = A -B*Ku -C*Kλ
-    bbar = -B*lu -C*lλ
+    bbar = -B*d -C*dλ
     S.Q .= Q + Ku'*R*Ku + Abar'*S⁺.Q*Abar
-    S.q .= q - Ku'*r + Ku'*R*lu + Abar'*S⁺.Q*bbar + Abar'*S⁺.q
+    S.q .= q - Ku'*r + Ku'*R*d + Abar'*S⁺.Q*bbar + Abar'*S⁺.q
 
-    # TODO return ΔV
-    return  @SVector zeros(2)
+    # return ΔV
+    t1 = 0
+	t2 = 0
+    return  @SVector [t1, t2]
 end
 
 function _calc_gains!(K, d, S, cost_exp, dyn_exp)

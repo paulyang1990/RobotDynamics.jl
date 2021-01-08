@@ -215,8 +215,8 @@ function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::D
 end
 @inline TO.error_expansion(D::TO.DynamicsExpansionMC, model::DoublePendulumMC) = D.A, D.B, D.C, D.G
 # dynamic expansion data structure 
-D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]
-TO.dynamics_expansion!(Euler, D, model, Z)
+# D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]
+# TO.dynamics_expansion!(Euler, D, model, Z)
 
-A,B,C,G = TO.error_expansion(D[10],model)
+# A,B,C,G = TO.error_expansion(D[10],model)
 
