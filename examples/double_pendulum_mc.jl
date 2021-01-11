@@ -39,6 +39,12 @@ function dynamics_con(model::DoublePendulumMC, x)
           (x[1:2]+d1) - (x[4:5]-d2)]
 end
 
+function angles_to_mc(model::DoublePendulumMC, th1, th2)
+  d1 = .5*model.l1*[cos(th1);sin(th1)]
+  d2 = .5*model.l2*[cos(th2);sin(th2)]
+  return [d1; th1; 2*d1 + d2; th2; zeros(6)]
+end
+
 function discrete_dynamics_MC(::Type{Q}, 
   model::DoublePendulumMC, z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
 
