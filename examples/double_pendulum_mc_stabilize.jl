@@ -108,11 +108,21 @@ uf = [(m1*xf[1] + m2*xf[4])*g; (xf[4] - 2*xf[1])*m2*g]
 xf′, λf = f(xf,uf,dt) # check xf′ = xf
 
 # compute stabilizing gains
-timesteps = 300
+timesteps = 599
 X = repeat(xf,outer=(1,timesteps+1))
 Lam = repeat(λf,outer=(1,timesteps))
 U = repeat(uf,outer=(1,timesteps))
 K, l, v1, v2 = backwardpass(X,Lam,U,getABCG,Q,R,Q,xf)
+display(K[:,:,end])
+display(K[:,:,1])
+display(l[:,end])
+display(l[:,1])
+
+# K[:,:,1] = 
+# 2×12 Array{Float64,2}:
+#   24.4454   24.4454  -7.52077  -6.90328  -6.90328    4.52472   1.30973   1.30973   0.308706  1.30109  1.30109  -0.310742
+#  -79.4631  -79.4631  11.3462   32.3121   32.3121   -21.9933   -2.62809  -2.62809  -0.619448  1.51489  1.51489   1.59596
+
 K6 = [K[1,6,i] for i=1:timesteps]
 K3 = [K[1,3,i] for i=1:timesteps]
 plot([K3 K6])
