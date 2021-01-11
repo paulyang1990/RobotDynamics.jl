@@ -3,6 +3,7 @@ using TrajectoryOptimization
 using StaticArrays
 using LinearAlgebra
 using ForwardDiff
+using Plots
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
