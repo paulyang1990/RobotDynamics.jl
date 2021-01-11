@@ -81,7 +81,7 @@ function discrete_dynamics_MC(::Type{Q},
           # println("breaking at iter: $i")
           break
       end
-      i == max_iters && throw("Max iters reached")
+      i == max_iters && @warn "Max iters reached"
 
       # Newton solve
       A = [M -J';
@@ -163,11 +163,6 @@ function RD.discrete_jacobian!(::Type{Q}, ∇f, model::DoublePendulumMC,
 
 end
 
-# function TrajectoryOptimization.dynamics_expansion!(Q, D::Vector{<:DynamicsExpansion}, model::AbstractModel,
-#   # x, λ = discrete_dynamics_MC(Q, model, z)
-#   # A,B,C,G = discrete_jacobian_MC(Q, model x,  λ)
-# end
-
 # Specify the state and control dimensions
 RD.state_dim(::DoublePendulumMC) = 12
 RD.control_dim(::DoublePendulumMC) = 2
@@ -221,6 +216,11 @@ function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::D
   end
 end
 @inline TO.error_expansion(D::TO.DynamicsExpansionMC, model::DoublePendulumMC) = D.A, D.B, D.C, D.G
+
+function TO.error_expansion!(D::Vector{<:TO.DynamicsExpansionMC}, model::AbstractModel, G)
+	return
+end
+
 # dynamic expansion data structure 
 # D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]
 # TO.dynamics_expansion!(Euler, D, model, Z)
