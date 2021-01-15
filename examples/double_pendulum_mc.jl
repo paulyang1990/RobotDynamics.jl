@@ -134,7 +134,7 @@ function discrete_jacobian_MC(::Type{Q}, model::DoublePendulumMC,
     
     J = ForwardDiff.jacobian(dc, q⁺)
     F = [0; -m1*g; u[1]-u[2];0; -m2*g; u[2]] * dt
-    return [M*(v⁺-v) - (J'*λ + F); q⁺ - (q + v⁺*dt)]
+    return [q⁺ - (q + v⁺*dt); M*(v⁺-v) - (J'*λ + F)]
   end
 
   # compute jacobians

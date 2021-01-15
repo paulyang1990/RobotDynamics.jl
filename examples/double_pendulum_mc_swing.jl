@@ -28,8 +28,8 @@ th2 = -pi/2
 d1 = .5*model.l1*[cos(th1);sin(th1)]
 d2 = .5*model.l2*[cos(th2);sin(th2)]
 x0 = [d1; th1; 2*d1 + d2; th2; zeros(6)]
-th1 = -pi/4
-th2 = pi/4
+th1 = pi/2
+th2 = pi/2
 d1 = .5*model.l1*[cos(th1);sin(th1)]
 d2 = .5*model.l2*[cos(th2);sin(th2)]
 xf = [d1; th1; 2*d1 + d2; th2; zeros(6)]
@@ -62,7 +62,17 @@ solver = iLQRSolver(prob, opts);
 solve!(solver);
 
 X2 = states(solver.Z)
-gr(size = (2750, 2565))
-plot([X2[i][3] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, label = ["joint 1 angle"],xlabel="time steps",xguidefontsize=38,ylabel="angle (rad)",yguidefontsize=38)
-plot!([X2[i][6] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, label = ["joint 2 angle"],xlabel="time steps",xguidefontsize=38,ylabel="angle (rad)",yguidefontsize=38)
+gr(size = (2850, 2065))
+plot([X2[i][3] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, legend=:topleft, label = ["link 1 angle"],xlabel="time steps",xguidefontsize=38,ylabel="angle (rad)",yguidefontsize=38)
+plot!([X2[i][6] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38,legend=:topleft,  label = ["link 2 angle"],xlabel="time steps",xguidefontsize=38,ylabel="angle (rad)",yguidefontsize=38)
 
+
+ctrl = controls(solver.Z)
+plot([ctrl[i][1] for i=1:N-1], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, legend=:topleft, label = ["joint 1 torque"],xlabel="time steps",xguidefontsize=38,ylabel="torque (Nm)",yguidefontsize=38)
+plot!([ctrl[i][2] for i=1:N-1], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38,legend=:topleft,  label = ["joint 2 torque"],xlabel="time steps",xguidefontsize=38,ylabel="torque (Nm)",yguidefontsize=38)
+
+
+plot([X2[i][1] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, legend=:topleft, label = ["link 1 x"],xlabel="time steps",xguidefontsize=38,ylabel="position (m)",yguidefontsize=38)
+plot!([X2[i][2] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, legend=:topleft, label = ["link 1 y"],xlabel="time steps",xguidefontsize=38,ylabel="position (m)",yguidefontsize=38)
+plot!([X2[i][4] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, legend=:topleft, label = ["link 2 x"],xlabel="time steps",xguidefontsize=38,ylabel="position (m)",yguidefontsize=38)
+plot!([X2[i][5] for i=1:N], linewidth=4,xtickfontsize=38,ytickfontsize=38,legendfontsize=38, legend=:topleft, label = ["link 2 y"],xlabel="time steps",xguidefontsize=38,ylabel="position (m)",yguidefontsize=38)
