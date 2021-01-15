@@ -7,12 +7,16 @@ using BenchmarkTools
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
+const RS = Rotations
 
 # Define the model struct to inherit from `RigidBody{R}`
 struct Pendulum3D{R,T} <: RigidBody{R}
+    l::T
+    r::T
+    
     M::Array{T} # mass matrix
     b::T # damping
-
+    
     g::T
 
     # constraint force dimension
@@ -20,7 +24,7 @@ struct Pendulum3D{R,T} <: RigidBody{R}
 
     function Pendulum3D{R,T}(m::T, l::T, r::T, b::T) where {R<:Rotation, T<:Real} 
         M = Diagonal([m,m,m,1.0/12.0*m*l^2,1.0/12.0*m*l^2,.5*m*r^2])
-        new(M, b, 9.81, 3)
+        new(l, r, M, b, 9.81, 3)
     end 
 end
 Pendulum3D() = Pendulum3D{UnitQuaternion{Float64},Float64}(1.0, 1.0, .1, .1)
@@ -32,53 +36,113 @@ RD.control_dim(::Pendulum3D) = 1
 RobotDynamics.mass(model::Pendulum3D) = model.M
 
 function max_constraints(model::Pendulum3D, x)
-    return [x[1:3] - UnitQuaternion(x[4:7]...) * [0;0;-.5];x[6:7]]
+    return [x[1:3] - UnitQuaternion(x[4:7]...) * [0;0;-model.l/2];x[6:7]]
 end
 
 function max_constraints_jacobian(model::Pendulum3D, x⁺)
     c!(x) = max_constraints(model, x)
     J_big = ForwardDiff.jacobian(c!, x⁺)
     R⁺ = UnitQuaternion(x⁺[4:7]...)
-    att_jac⁺ = Rotations.∇differential(R⁺)
+    att_jac⁺ = RS.∇differential(R⁺)
     return [J_big[:,1:3] J_big[:,4:7]*att_jac⁺]
 end
 
-function wrenches(model::Pendulum3D, x⁺, x, u)
-    [0;0;-9.81; u[1]-.1*x⁺[11];0;0] 
+function forces(model::Pendulum3D, x⁺, x, u)
+    [0;0;-model.M[1,1]*9.81]
 end
 
-function fc(model::Pendulum3D, x⁺, x, u, λ, dt)
-    c = max_constraints(model, x⁺)
+function torques(model::Pendulum3D, x⁺, x, u)
+    [u[1]-model.b*x⁺[11];0;0] 
+end
+
+function wrenches(model::Pendulum3D, x⁺, x, u)
+    f = forces(model, x⁺, x, u)
+    τ = torques(model, x⁺, x, u)
+    return [f; τ]
+end
+
+function sqrt_term(ω,dt)
+    sqrt(4/dt^2-ω'ω)
+end
+
+function propagate_config!(model::Pendulum3D, x⁺, x, dt)
+    v⁺ = x⁺[8:10]
+    x⁺[1:3] = x[1:3] + v⁺*dt
+    
+    ω⁺ = x⁺[11:13]
+    x⁺[4:7] = RS.params(RS.expm(ω⁺*dt) * UnitQuaternion(x[4:7]...))
+
+    # Jan
+    # x⁺[4:7] = dt/2*RS.params(UnitQuaternion(x[4:7]...,false)*UnitQuaternion(sqrt_term(ω⁺,dt),ω⁺...,false))
+    return 
+end
+
+function propagate_config(model::Pendulum3D, x⁺, x, dt)
+    x⁺ = copy(x⁺)
+    propagate_config!(model, x⁺, x, dt)
+    return x⁺[1:7]
+end
+
+function f_pos(model::Pendulum3D, x⁺, x, u, λ, dt)
+    return x⁺[1:7] - propagate_config(model, x⁺, x, dt)
+end
+
+function f_vel(model::Pendulum3D, x⁺, x, u, λ, dt)
     J = max_constraints_jacobian(model, x⁺)
     F = wrenches(model, x⁺, x, u) * dt
 
     v⁺ = x⁺[8:13]
     v = x[8:13]
 
-    [model.M*(v⁺-v) - J'*λ - F; c]
+    return model.M*(v⁺-v) - J'*λ - F
+
+    # Jan
+    # J = max_constraints_jacobian(model, x⁺)
+    
+    # mass = model.M[1:3,1:3]
+    # iner = model.M[4:6,4:6]
+
+    # v⁺ = x⁺[8:10]
+    # ω⁺ = x⁺[11:13]
+    # v = x[8:10]
+    # ω = x[11:13]
+
+    # f_t = mass*(v⁺-v)/dt - forces(model,x⁺,x,u)
+    # f_r = iner*(ω⁺*sqrt_term(ω⁺,dt)-ω*sqrt_term(ω,dt)) + cross(ω⁺,iner*ω⁺) - cross(ω,iner*ω) - 2*torques(model,x⁺,x,u)
+    # return [f_t;f_r]-J'λ
+end
+
+function fc(model::Pendulum3D, x⁺, x, u, λ, dt)
+    f = f_vel(model, x⁺, x, u, λ, dt)
+    c = max_constraints(model, x⁺)
+    return [f;c]
 end
 
 function fc_jacobian(model::Pendulum3D, x⁺, x, u, λ, dt)
     nv, nc = 6, length(λ)
     function fc_aug(s)
-        r⁺ = x[1:3] + s[1:3]*dt
-        q⁺ = Rotations.params(Rotations.expm(s[4:6]*dt) * UnitQuaternion(x[4:7]...))
-        fc(model, [r⁺;q⁺;s[1:6]], x, u, s[6 .+ (1:nc)], dt)
+        # Unpack
+        _x⁺ = convert(Array{eltype(s)}, x⁺)
+        _x⁺[7 .+ (1:nv)] = s[1:nv]
+        _λ = s[nv .+ (1:nc)]
+
+        propagate_config!(model, _x⁺, x, dt)
+        fc(model, _x⁺, x, u, _λ, dt)
     end
     ForwardDiff.jacobian(fc_aug, [x⁺[8:end];λ])
 end
 
-function line_step!(model::Pendulum3D, x⁺_new, λ_new, x⁺, λ, Δs, x)
-    # update lambda and v
+function line_step!(model::Pendulum3D, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
+    # update lambda
     Δλ = Δs[7:end]
     λ_new .= λ - Δλ
 
+    # update v⁺
     Δv⁺ = Δs[1:6]
     x⁺_new[7 .+ (1:6)] .= x⁺[7 .+ (1:6)] - Δv⁺    
 
     # compute configuration from v⁺
-    x⁺_new[1:3] = x[1:3] + x⁺_new[7 .+ (1:3)]*dt
-    x⁺_new[4:7] = Rotations.params(Rotations.expm(x⁺_new[7 .+ (4:6)]*dt) * UnitQuaternion(x[4:7]...))
+    propagate_config!(model, x⁺_new, x, dt)
     return    
 end
 
@@ -112,7 +176,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Pendulum3D,
         j=0
         err_new = err + 1        
         while (err_new > err) && (j < line_iters)
-            line_step!(model, x⁺_new, λ_new, x⁺, λ, Δs, x)
+            line_step!(model, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
             err_new = norm(fc(model, x⁺_new, x, u, λ_new, dt))
             Δs /= 2
             j += 1
@@ -126,7 +190,9 @@ function discrete_dynamics_MC(::Type{Q}, model::Pendulum3D,
         end
     end
 
-    throw("Newton did not converge. ")
+    # throw("Newton did not converge. ")
+    println("Newton did not converge. ")
+    return x⁺, λ
 end
 
 function RD.discrete_dynamics(::Type{Q}, model::Pendulum3D, 
@@ -152,23 +218,11 @@ function discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
 
     function f_imp(z)
         # Unpack
-        q⁺ = z[1:nq]
-        v⁺ = z[nq .+ (1:nv)]
-        q = z[nq+nv .+ (1:nq)]
-        v = z[2*nq+nv .+ (1:nv)]
-        u = z[2*(nq+nv) .+ (1:m)]
-        λ = z[2*(nq+nv)+m .+ (1:nc)]
-    
-        M = 1.0*Matrix(I,6,6)
-        b = 0.1
-        
-        J = max_constraints_jacobian(model, q⁺)
-        F = [0;0;-9.81; u[1]-b*v⁺[4];0;0] * dt
-
-        ω⁺ = v⁺[4:6]
-        quat⁺ = Rotations.params(Rotations.expm(ω⁺*dt) * UnitQuaternion(q[4:7]...))
-
-        return [M*(v⁺-v) - (J'*λ + F); q⁺ - [q[1:3]+v⁺[1:3]*dt; quat⁺]]
+        _x⁺ = z[1:(nq+nv)]
+        _x = z[(nq+nv) .+ (1:nq+nv)]
+        _u = z[2*(nq+nv) .+ (1:m)]
+        _λ = z[2*(nq+nv)+m .+ (1:nc)]
+        return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
     end
 
     n = length(x)
@@ -177,8 +231,8 @@ function discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
     ABC = -all_partials[:,1:n]\all_partials[:,n+1:end]
 
-    att_jac = Rotations.∇differential(UnitQuaternion(x[4:7]...))
-    att_jac⁺ = Rotations.∇differential(UnitQuaternion(x⁺[4:7]...))
+    att_jac = RS.∇differential(UnitQuaternion(x[4:7]...))
+    att_jac⁺ = RS.∇differential(UnitQuaternion(x⁺[4:7]...))
 
     ABC′ = zeros(2*nv,n+m+nc)
     ABC′[1:3, :] = ABC[1:3, :]
@@ -199,20 +253,21 @@ function discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
     return A,B,C,G
 end
 
-model = Pendulum3D()
-dt = 0.01
-R0 = UnitQuaternion(.9999,.0001,0, 0)
-x0 = [R0*[0.; 0.; -.5]; Rotations.params(R0); zeros(6)]
-z = KnotPoint(x0,[.0],dt)
+# if __main__
+path1 = (@__FILE__)[2:end]
+path2 = (abspath(joinpath("RobotDynamics.jl","examples","3DPendulum.jl")))[2:end]
+if path1 == path2
+    model = Pendulum3D()
+    dt = 0.01
+    R0 = UnitQuaternion(.9999,.0001,0, 0)
+    x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
+    z = KnotPoint(x0,[.0],dt)
+    
+    # Evaluate the discrete dynamics and Jacobian
+    x′ = RD.discrete_dynamics(PassThrough, model, z)
+    println(x′)
+    
+    A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
+    println(A)
+end
 
-# Evaluate the discrete dynamics and Jacobian
-x′ = RD.discrete_dynamics(PassThrough, model, z)
-println(x′)
-
-A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
-println(A)
-
-# G = zeros(state_dim(model), RobotDynamics.state_diff_size(model))
-# x,u = rand(model)
-# z = KnotPoint(x,u,0.01)
-# RobotDynamics.state_diff_jacobian!(G, model, x)

@@ -13,7 +13,7 @@ m = 1 # number of controls
 
 #initial and goal conditions
 R0 = UnitQuaternion(.9999,.0001,0, 0)
-x0 = [R0*[0.; 0.; -.5]; Rotations.params(R0); zeros(6)]
+x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
 xf = [0.; 0.;  .5; 0; 1; 0; 0; zeros(6)]
 
 #costs
@@ -84,7 +84,7 @@ function compute_Qq(Q, w, x, xf)
     
     q_ = Q*(x - xf)
     deleteat!(q_,4)
-    att_jac = Rotations.∇differential(UnitQuaternion(x[4:7]))
+    att_jac = RS.∇differential(UnitQuaternion(x[4:7]))
     q_[4:6] = w*att_jac'*xf[4:7]
     return Q_, q_
 end
@@ -230,9 +230,6 @@ function stable_rollout(Ku,x0,u0,f,dt,tf)
     return X, Lam, U
 end
 
-# X, Lam = rollout(x0,rand(1,floor(Int, tf/dt)),f,dt,tf)
-
-# SWING UP
 function f(x,u,dt)
     z = KnotPoint(x,u,dt)
     discrete_dynamics_MC(PassThrough,model,z)
@@ -243,7 +240,14 @@ function getABCG(x⁺,x,u,λ,dt)
     discrete_jacobian_MC(PassThrough, model, z)
 end
 
+# ROLLOUT
+# X, Lam = rollout(x0,rand(1,floor(Int, tf/dt)),f,dt,tf)
+# X, Lam = rollout(x0,.1*ones(1,floor(Int, tf/dt)),f,dt,tf)
+
+# SWINGUP
 X, U, K, l, X0, U0, Lam0 = solve(x0,m,f,getABCG,Q,R,Qf,xf,dt,tf,100,control_init="random");
+
+# PLOTS
 _,N = size(X)
 
 # Kth = [K[1,4,i] for i=1:N-1]
