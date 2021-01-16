@@ -19,7 +19,7 @@ xf = [0.; 0.;  .5; 0; 1; 0; 0; zeros(6)]
 #costs
 Q = .001*Diagonal([ones(3); zeros(4); ones(6)])
 Qf = 100.0*Diagonal([ones(3); zeros(4); ones(6)])
-R = 0.0001*Matrix(I,m,m)
+R = 0.00000001*Matrix(I,m,m)
 cost_w = .1
 cost_wf = 100.
 
@@ -165,7 +165,13 @@ function forwardpass(X,U,f,J,K,l)
         for k = 1:N-1
             dx = state_error(X[:,k], X_prev[:,k])
             U_[:,k] = U[:,k] - K[:,:,k]*dx - alpha*l[:,k]
-            X[:,k+1], Lam[:,k] = f(X[:,k],U_[:,k],dt);
+            try
+                X[:,k+1], Lam[:,k] = f(X[:,k],U_[:,k],dt);
+            catch e
+                println(e)
+                k = 1
+                alpha /= 2.
+            end            
         end
 
         J = cost(X,U_,Q,R,Qf,xf)
@@ -245,7 +251,8 @@ end
 # X, Lam = rollout(x0,.1*ones(1,floor(Int, tf/dt)),f,dt,tf)
 
 # SWINGUP
-X, U, K, l, X0, U0, Lam0 = solve(x0,m,f,getABCG,Q,R,Qf,xf,dt,tf,100,control_init="random");
+# X, U, K, l, X0, U0, Lam0 = solve(x0,m,f,getABCG,Q,R,Qf,xf,dt,tf,100,control_init="random");
+X, U, K, l, X0, U0, Lam0 = solve(x0,m,f,getABCG,Q,R,Qf,xf,dt,tf,3,control_init="random");
 
 # PLOTS
 _,N = size(X)

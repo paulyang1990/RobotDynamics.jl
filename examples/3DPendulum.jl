@@ -71,9 +71,6 @@ function propagate_config!(model::Pendulum3D, x⁺, x, dt)
     
     ω⁺ = x⁺[11:13]
     x⁺[4:7] = RS.params(RS.expm(ω⁺*dt) * UnitQuaternion(x[4:7]...))
-
-    # Jan
-    # x⁺[4:7] = dt/2*RS.params(UnitQuaternion(x[4:7]...,false)*UnitQuaternion(sqrt_term(ω⁺,dt),ω⁺...,false))
     return 
 end
 
@@ -88,28 +85,34 @@ function f_pos(model::Pendulum3D, x⁺, x, u, λ, dt)
 end
 
 function f_vel(model::Pendulum3D, x⁺, x, u, λ, dt)
-    J = max_constraints_jacobian(model, x⁺)
-    F = wrenches(model, x⁺, x, u) * dt
+    # J = max_constraints_jacobian(model, x⁺)
+    # F = wrenches(model, x⁺, x, u) * dt
 
-    v⁺ = x⁺[8:13]
-    v = x[8:13]
+    # v⁺ = x⁺[8:13]
+    # v = x[8:13]
 
-    return model.M*(v⁺-v) - J'*λ - F
+    # return model.M*(v⁺-v) - J'*λ - F
 
     # Jan
-    # J = max_constraints_jacobian(model, x⁺)
+    J = max_constraints_jacobian(model, x⁺)
     
-    # mass = model.M[1:3,1:3]
-    # iner = model.M[4:6,4:6]
+    mass = model.M[1:3,1:3]
+    iner = model.M[4:6,4:6]
 
-    # v⁺ = x⁺[8:10]
-    # ω⁺ = x⁺[11:13]
-    # v = x[8:10]
-    # ω = x[11:13]
+    v⁺ = x⁺[8:10]
+    ω⁺ = x⁺[11:13]
+    v = x[8:10]
+    ω = x[11:13]
 
-    # f_t = mass*(v⁺-v)/dt - forces(model,x⁺,x,u)
-    # f_r = iner*(ω⁺*sqrt_term(ω⁺,dt)-ω*sqrt_term(ω,dt)) + cross(ω⁺,iner*ω⁺) - cross(ω,iner*ω) - 2*torques(model,x⁺,x,u)
-    # return [f_t;f_r]-J'λ
+    f_t = mass*(v⁺-v)/dt - forces(model,x⁺,x,u)
+    f_r = iner*(ω⁺*sqrt_term(ω⁺,dt)-ω*sqrt_term(ω,dt)) + cross(ω⁺,iner*ω⁺) + cross(ω,iner*ω) - 2*torques(model,x⁺,x,u)
+    
+    # Zac
+    f_t = mass*(v⁺-v) - forces(model,x⁺,x,u)*dt
+    Φ⁺ = ω⁺*dt
+    Φ =  ω*dt    
+    f_r = sqrt(1-Φ⁺'Φ⁺)*iner*Φ⁺ - sqrt(1-Φ'Φ)*iner*Φ + cross(Φ⁺,iner*Φ⁺) + cross(Φ⁺,iner*Φ⁺) + dt^2/2*torques(model,x⁺,x,u)
+    return [f_t;f_r]-J'λ
 end
 
 function fc(model::Pendulum3D, x⁺, x, u, λ, dt)
@@ -253,21 +256,15 @@ function discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
     return A,B,C,G
 end
 
-# if __main__
-path1 = (@__FILE__)[2:end]
-path2 = (abspath(joinpath("RobotDynamics.jl","examples","3DPendulum.jl")))[2:end]
-if path1 == path2
-    model = Pendulum3D()
-    dt = 0.01
-    R0 = UnitQuaternion(.9999,.0001,0, 0)
-    x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
-    z = KnotPoint(x0,[.0],dt)
-    
-    # Evaluate the discrete dynamics and Jacobian
-    x′ = RD.discrete_dynamics(PassThrough, model, z)
-    println(x′)
-    
-    A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
-    println(A)
-end
+# model = Pendulum3D()
+# dt = 0.01
+# R0 = UnitQuaternion(.9999,.0001,0, 0)
+# x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
+# z = KnotPoint(x0,[1.],dt)
 
+# # Evaluate the discrete dynamics and Jacobian
+# x′ = RD.discrete_dynamics(PassThrough, model, z)
+# println(x′[4:7])
+
+# A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
+# println(A)
