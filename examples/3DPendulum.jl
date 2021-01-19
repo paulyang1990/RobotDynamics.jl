@@ -85,15 +85,6 @@ function f_pos(model::Pendulum3D, x⁺, x, u, λ, dt)
 end
 
 function f_vel(model::Pendulum3D, x⁺, x, u, λ, dt)
-    # J = max_constraints_jacobian(model, x⁺)
-    # F = wrenches(model, x⁺, x, u) * dt
-
-    # v⁺ = x⁺[8:13]
-    # v = x[8:13]
-
-    # return model.M*(v⁺-v) - J'*λ - F
-
-    # Jan
     J = max_constraints_jacobian(model, x⁺)
     
     mass = model.M[1:3,1:3]
@@ -104,14 +95,9 @@ function f_vel(model::Pendulum3D, x⁺, x, u, λ, dt)
     v = x[8:10]
     ω = x[11:13]
 
-    f_t = mass*(v⁺-v)/dt - forces(model,x⁺,x,u)
-    f_r = iner*(ω⁺*sqrt_term(ω⁺,dt)-ω*sqrt_term(ω,dt)) + cross(ω⁺,iner*ω⁺) + cross(ω,iner*ω) - 2*torques(model,x⁺,x,u)
+    f_t = mass*(v⁺-v)/dt - forces(model,x⁺,x,u)  
+    f_r = sqrt(1/dt^2-ω⁺'ω⁺)*iner*ω⁺ - sqrt(1/dt^2-ω'ω)*iner*ω + cross(ω⁺,iner*ω⁺) + cross(ω,iner*ω) - .5*torques(model,x⁺,x,u)
     
-    # Zac
-    f_t = mass*(v⁺-v) - forces(model,x⁺,x,u)*dt
-    Φ⁺ = ω⁺*dt
-    Φ =  ω*dt    
-    f_r = sqrt(1-Φ⁺'Φ⁺)*iner*Φ⁺ - sqrt(1-Φ'Φ)*iner*Φ + cross(Φ⁺,iner*Φ⁺) + cross(Φ⁺,iner*Φ⁺) + dt^2/2*torques(model,x⁺,x,u)
     return [f_t;f_r]-J'λ
 end
 
