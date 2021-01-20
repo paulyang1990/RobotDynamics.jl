@@ -24,7 +24,7 @@ struct Pendulum3D{R,T} <: RigidBody{R}
 
     function Pendulum3D{R,T}(m::T, l::T, r::T, b::T) where {R<:Rotation, T<:Real} 
         M = Diagonal([m,m,m,1.0/12.0*m*l^2,1.0/12.0*m*l^2,.5*m*r^2])
-        new(l, r, M, b, 9.81, 3)
+        new(l, r, M, b, 9.81, 5)
     end 
 end
 Pendulum3D() = Pendulum3D{UnitQuaternion{Float64},Float64}(1.0, 1.0, .1, .1)
