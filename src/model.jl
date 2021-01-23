@@ -69,6 +69,7 @@ can be used, but we suggest one of the following:
 * `RodriguesParam`
 """
 abstract type RigidBody{R<:Rotation} <: LieGroupModel end
+abstract type RigidBodyMC{R} <: RigidBody{R} end
 
 "Integration rule for approximating the continuous integrals for the equations of motion"
 abstract type QuadratureRule end

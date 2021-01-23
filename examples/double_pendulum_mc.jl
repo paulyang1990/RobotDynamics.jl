@@ -4,6 +4,7 @@ using StaticArrays
 using LinearAlgebra
 using ForwardDiff
 using Plots
+using Altro
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
@@ -37,6 +38,11 @@ function dynamics_con(model::DoublePendulumMC, x)
   d2 = .5*l2*[cos(x[6]);sin(x[6])]
   return [x[1:2] - d1;
           (x[1:2]+d1) - (x[4:5]-d2)]
+end
+
+function Altro.is_converged(model::DoublePendulumMC, x)
+  c = dynamics_con(model, x)
+  return norm(c) < 1e-6
 end
 
 function angles_to_mc(model::DoublePendulumMC, th1, th2)
@@ -100,7 +106,7 @@ function discrete_dynamics_MC(::Type{Q},
   
 end
 
-function discrete_jacobian_MC(::Type{Q}, model::DoublePendulumMC,
+function Altro.discrete_jacobian_MC(::Type{Q}, model::DoublePendulumMC,
   z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
 
   n, m = size(model)
@@ -202,24 +208,24 @@ z = KnotPoint(x,u,dt)
 # th2 = [X[t][6] for t = 1:N]
 # plot([th1 th2]*180/pi)
 
-@inline TO.DynamicsExpansionMC(model::DoublePendulumMC) = TO.DynamicsExpansionMC{Float64}(model)
-@inline function TO.DynamicsExpansionMC{T}(model::DoublePendulumMC) where T
-	n,m = size(model)
-	n̄ = state_diff_size(model)
-	TO.DynamicsExpansionMC{T}(n,n̄,m,model.p)
-end
-function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::DoublePendulumMC,
-  Z::Traj)
-  for k in eachindex(D)
-    D[k].A,D[k].B,D[k].C,D[k].G = discrete_jacobian_MC(Q, model, Z[k])
+# @inline TO.DynamicsExpansionMC(model::DoublePendulumMC) = TO.DynamicsExpansionMC{Float64}(model)
+# @inline function TO.DynamicsExpansionMC{T}(model::DoublePendulumMC) where T
+# 	n,m = size(model)
+# 	n̄ = state_diff_size(model)
+# 	TO.DynamicsExpansionMC{T}(n,n̄,m,model.p)
+# end
+# function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::DoublePendulumMC,
+#   Z::Traj)
+#   for k in eachindex(D)
+#     D[k].A,D[k].B,D[k].C,D[k].G = discrete_jacobian_MC(Q, model, Z[k])
 
-  end
-end
-@inline TO.error_expansion(D::TO.DynamicsExpansionMC, model::DoublePendulumMC) = D.A, D.B, D.C, D.G
+#   end
+# end
+# @inline TO.error_expansion(D::TO.DynamicsExpansionMC, model::DoublePendulumMC) = D.A, D.B, D.C, D.G
 
-function TO.error_expansion!(D::Vector{<:TO.DynamicsExpansionMC}, model::AbstractModel, G)
-	return
-end
+# function TO.error_expansion!(D::Vector{<:TO.DynamicsExpansionMC}, model::AbstractModel, G)
+# 	return
+# end
 
 # dynamic expansion data structure 
 # D = [TO.DynamicsExpansionMC{Float64}(n,m,p) for k = 1:N]

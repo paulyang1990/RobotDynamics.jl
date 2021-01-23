@@ -9,8 +9,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 const RS = Rotations
 
-# Define the model struct to inherit from `RigidBody{R}`
-struct Pendulum3D{R,T} <: RigidBody{R}
+struct Pendulum3D{R,T} <: RD.RigidBodyMC{R}
     l::T
     r::T
     
@@ -37,6 +36,11 @@ RobotDynamics.mass(model::Pendulum3D) = model.M
 
 function max_constraints(model::Pendulum3D, x)
     return [x[1:3] - UnitQuaternion(x[4:7]...) * [0;0;-model.l/2];x[6:7]]
+end
+
+function Altro.is_converged(model::Pendulum3D, x)
+    c = max_constraints(model, x)
+    return norm(c) < 1e-6
 end
 
 function max_constraints_jacobian(model::Pendulum3D, x⁺)
@@ -98,7 +102,7 @@ function f_vel(model::Pendulum3D, x⁺, x, u, λ, dt)
     f_t = mass*(v⁺-v)/dt - forces(model,x⁺,x,u)  
     f_r = sqrt(1/dt^2-ω⁺'ω⁺)*iner*ω⁺ - sqrt(1/dt^2-ω'ω)*iner*ω + cross(ω⁺,iner*ω⁺) + cross(ω,iner*ω) - .5*torques(model,x⁺,x,u)
     
-    return [f_t;f_r]-J'λ
+    return [f_t;f_r]*dt-J'λ
 end
 
 function fc(model::Pendulum3D, x⁺, x, u, λ, dt)
@@ -142,7 +146,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Pendulum3D,
     u = control(z)
     t = z.t 
     dt = z.dt
-
+    
     nq = 7
     nv = 6
     nc = 5
@@ -153,7 +157,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Pendulum3D,
 
     x⁺_new, λ_new = copy(x⁺), copy(λ)
 
-    max_iters, line_iters, ϵ = 100, 10, 1e-12
+    max_iters, line_iters, ϵ = 100, 10, 1e-6
     for i=1:max_iters  
         # Newton step    
         err_vec = fc(model, x⁺, x, u, λ, dt)
@@ -190,9 +194,13 @@ function RD.discrete_dynamics(::Type{Q}, model::Pendulum3D,
     return x
 end
 
-function discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
+function Altro.discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
     z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
     
+    if z.dt == 0
+        z.dt = 1e-4
+    end
+
     nq = 7
     nv = 6
     nc = 5
