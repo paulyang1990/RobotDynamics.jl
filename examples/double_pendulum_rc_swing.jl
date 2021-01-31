@@ -19,7 +19,7 @@ using Altro: iLQRSolver
 include("double_pendulum_rc.jl")
 
 N = 300   
-dt = .01                  # number of knot points
+dt = 0.01                  # number of knot points
 tf = (N-1)*dt           # final time
 
 # initial and final conditions
@@ -45,7 +45,8 @@ end
 
 # objective
 Q = zeros(n)
-Q[1] = Q[2] = 1e-3/dt
+# Q[1] = Q[2] = 1e-3/dt
+Q[3] = Q[4] = 1e-3/dt
 Q = Diagonal(SVector{n}(Q))
 R = Diagonal(@SVector fill(1e-4/dt, m))
 Qf = zeros(n)
@@ -108,4 +109,5 @@ Kout = [reshape(item,1,8) for item in K]
 CSV.write("rc_K.csv",  DataFrame(vcat(Kout...)), writeheader=false)
 CSV.write("rc_d.csv",  DataFrame(d), writeheader=false)
 CSV.write("rc_xref.csv",  DataFrame(X2), writeheader=false)
+CSV.write("rc_uref.csv",  DataFrame(ctrl), writeheader=false)
 CSV.write("time.csv",  DataFrame([1:N-1]*dt), writeheader=false)

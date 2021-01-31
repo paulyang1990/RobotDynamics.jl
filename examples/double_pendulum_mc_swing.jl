@@ -99,4 +99,5 @@ Kout = [reshape(item,1,24) for item in K]
 CSV.write("mc_K.csv",  DataFrame(vcat(Kout...)), writeheader=false)
 CSV.write("mc_d.csv",  DataFrame(d), writeheader=false)
 CSV.write("mc_xref.csv",  DataFrame(X2), writeheader=false)
+CSV.write("mc_uref.csv",  DataFrame(ctrl), writeheader=false)
 CSV.write("time.csv",  DataFrame([1:N-1]*dt), writeheader=false)

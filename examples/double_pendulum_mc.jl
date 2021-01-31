@@ -78,7 +78,7 @@ function discrete_dynamics_MC(::Type{Q},
       c = dynamics_con(model, q⁺)
       curry(xs) = dynamics_con(model, xs)
       J = ForwardDiff.jacobian(curry, q⁺)   # curry function 
-      F = [0; -m1*g; u[1]-u[2];0; -m2*g; u[2]] * dt
+      F = [0; -m1*g; u[1]-u[2]; 0; -m2*g; u[2]] * dt
 
       # Check break condition
       f = M*(v⁺-v) - J'*λ - F
