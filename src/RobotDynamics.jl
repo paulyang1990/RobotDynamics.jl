@@ -29,8 +29,8 @@ export
 
 # rigid bodies
 export
-    LieGroupModel,
-    RigidBody,
+    LieGroupModel, LieGroupModelMC,
+    RigidBody, RigidBodyMC,
     RBState,
     orientation,
     linear_velocity,

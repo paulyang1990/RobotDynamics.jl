@@ -37,6 +37,7 @@ abstract type AbstractModelMC <: AbstractModel end
 Abstraction of a dynamical system whose state contains at least one arbitrary rotation.
 """
 abstract type LieGroupModel <: AbstractModel end
+abstract type LieGroupModelMC{R<:Rotation} <: LieGroupModel end
 
 
 """
