@@ -18,6 +18,8 @@ const RD = RobotDynamics
 using Altro: iLQRSolver
 
 include("double_pendulum_mc.jl")
+include("double_pendulum_costfunctions_mc.jl")
+# include("double_pendulum_costfunctions_rc.jl")
 
 N = 300   
 dt = .01                  # number of knot points
@@ -36,18 +38,33 @@ d2 = .5*model.l2*[cos(th2);sin(th2)]
 xf = [d1; th1; 2*d1 + d2; th2; zeros(6)]
 
 # objective
-Q = zeros(n)
-# Q[1] = Q[2] = Q[3] = Q[4] = Q[5] = Q[6] = 1e-4/dt
-Q[7] = Q[8] = Q[9] = Q[10] = Q[11] = Q[12] = 1e-3/dt
-Q = Diagonal(SVector{n}(Q))
-R = Diagonal(@SVector fill(1e-4/dt, m))
-Qf = zeros(n)
-Qf[1] = Qf[4] = 2500
-Qf[2] = Qf[5] = 2500
-Qf[3] = Qf[6] = 2500
-# Qf[7] = Qf[8] = Qf[9] = Qf[10] = Qf[11] = Qf[12] = 1250
-Qf = Diagonal(SVector{n}(Qf))
-obj = LQRObjective(Q,R,Qf,xf,N)
+# Q = zeros(n)
+# # Q[1] = Q[2] = Q[3] = Q[4] = Q[5] = Q[6] = 1e-4/dt
+# Q[7] = Q[8] = Q[9] = Q[10] = Q[11] = Q[12] = 1e-3/dt
+# Q = Diagonal(SVector{n}(Q))
+# R = Diagonal(@SVector fill(1e-4/dt, m))
+# Qf = zeros(n)
+# Qf[1] = Qf[4] = 2500
+# Qf[2] = Qf[5] = 2500
+# Qf[3] = Qf[6] = 2500
+# # Qf[7] = Qf[8] = Qf[9] = Qf[10] = Qf[11] = Qf[12] = 1250
+# Qf = Diagonal(SVector{n}(Qf))
+# obj = LQRObjective(Q,R,Qf,xf,N)
+
+# 1,2 - tip position
+# 3,4 - minimize link velocity
+
+zf = @SVector [0,2,0,0] 
+uf = @SVector [0,0]
+Q = zeros(4)
+Q[1] = Q[2] = 1e-5
+Q[3] = Q[4] = 1e-2
+Q = Diagonal(SVector{4}(Q))
+R = Diagonal(@SVector fill(1e-4, 2))
+Qf = zeros(4)
+Qf[1] = Qf[2] = 1500
+Qf = Diagonal(SVector{4}(Qf))
+obj = MCObjective(Q,R,Qf,zf,N;uf = uf)
 
 # constraints
 cons = ConstraintList(n,m,N)

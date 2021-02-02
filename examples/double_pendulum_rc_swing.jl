@@ -17,6 +17,7 @@ const RD = RobotDynamics
 using Altro: iLQRSolver
 
 include("double_pendulum_rc.jl")
+include("double_pendulum_costfunctions_rc.jl")
 
 N = 300   
 dt = 0.01                  # number of knot points
@@ -43,17 +44,29 @@ function rc_to_mc(model::DoublePendulumRC, rc_x)
     return mc_x
 end
 
-# objective
-Q = zeros(n)
-# Q[1] = Q[2] = 1e-3/dt
-Q[3] = Q[4] = 1e-3/dt
-Q = Diagonal(SVector{n}(Q))
-R = Diagonal(@SVector fill(1e-4/dt, m))
-Qf = zeros(n)
-Qf[1] = Qf[2] = 2500
-Qf[3] = Qf[4] = 2500
-Qf = Diagonal(SVector{n}(Qf))
-obj = LQRObjective(Q,R,Qf,xf,N)
+# # objective
+# Q = zeros(n)
+# # Q[1] = Q[2] = 1e-3/dt
+# Q[3] = Q[4] = 1e-3/dt
+# Q = Diagonal(SVector{n}(Q))
+# R = Diagonal(@SVector fill(1e-4/dt, m))
+# Qf = zeros(n)
+# Qf[1] = Qf[2] = 2500
+# Qf[3] = Qf[4] = 2500
+# Qf = Diagonal(SVector{n}(Qf))
+# obj = LQRObjective(Q,R,Qf,xf,N)
+
+zf = @SVector [0,2,0,0] 
+uf = @SVector [0,0]
+Q = zeros(4)
+Q[1] = Q[2] = 1e-5
+Q[3] = Q[4] = 1e-2
+Q = Diagonal(SVector{4}(Q))
+R = Diagonal(@SVector fill(1e-4, 2))
+Qf = zeros(4)
+Qf[1] = Qf[2] = 1500
+Qf = Diagonal(SVector{4}(Qf))
+obj = RCObjective(Q,R,Qf,zf,N;uf = uf)
 
 # constraints
 cons = ConstraintList(n,m,N)
