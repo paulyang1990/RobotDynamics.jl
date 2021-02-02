@@ -18,7 +18,7 @@ const RD = RobotDynamics
 using Altro: iLQRSolver
 
 include("double_pendulum_mc.jl")
-include("double_pendulum_costfunctions.jl")
+include("double_pendulum_costfunctions_mc.jl")
 # include("double_pendulum_costfunctions_rc.jl")
 
 N = 300   
