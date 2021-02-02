@@ -7,6 +7,8 @@ using ForwardDiff
 using FiniteDiff
 using UnsafeArrays
 using RecipesBase
+using SparseDiffTools
+using SparseArrays
 
 using Rotations: skew
 using StaticArrays: SUnitRange
@@ -29,8 +31,8 @@ export
 
 # rigid bodies
 export
-    LieGroupModel,
-    RigidBody,
+    LieGroupModel, LieGroupModelMC,
+    RigidBody, RigidBodyMC,
     RBState,
     orientation,
     linear_velocity,

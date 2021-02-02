@@ -4,6 +4,7 @@ using Rotations
 using ForwardDiff
 using StaticArrays, LinearAlgebra
 using BenchmarkTools
+using Altro
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
@@ -23,19 +24,20 @@ struct Pendulum3D{R,T} <: RD.RigidBodyMC{R}
 
     function Pendulum3D{R,T}(m::T, l::T, r::T, b::T) where {R<:Rotation, T<:Real} 
         M = Diagonal([m,m,m,1.0/12.0*m*l^2,1.0/12.0*m*l^2,.5*m*r^2])
-        new(l, r, M, b, 9.81, 5)
+        new(l, r, M, b, 9.81, 3)
     end 
 end
 Pendulum3D() = Pendulum3D{UnitQuaternion{Float64},Float64}(1.0, 1.0, .1, .1)
 
+
+Altro.config_size(model::Pendulum3D) = 7
+
 # Specify the state and control dimensions
 RD.control_dim(::Pendulum3D) = 1
 
-# Define some simple "getter" methods that are required to evaluate the dynamics
-RobotDynamics.mass(model::Pendulum3D) = model.M
-
 function max_constraints(model::Pendulum3D, x)
-    return [x[1:3] - UnitQuaternion(x[4:7]...) * [0;0;-model.l/2];x[6:7]]
+    return x[1:3] - UnitQuaternion(x[4:7]...) * [0;0;-model.l/2] # spherical
+    return [x[1:3] - UnitQuaternion(x[4:7]...) * [0;0;-model.l/2];x[6:7]] # pin
 end
 
 function Altro.is_converged(model::Pendulum3D, x)
@@ -147,9 +149,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Pendulum3D,
     t = z.t 
     dt = z.dt
     
-    nq = 7
-    nv = 6
-    nc = 5
+    nq, nv, nc = mc_dims(model)
 
     # initial guess
     λ = zeros(nc)
@@ -201,9 +201,7 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
         z.dt = 1e-4
     end
 
-    nq = 7
-    nv = 6
-    nc = 5
+    nq, nv, nc = mc_dims(model)
 
     x = state(z) 
     u = control(z)
@@ -247,18 +245,33 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
 
     J = max_constraints_jacobian(model, x⁺)
     G = [J zeros(size(J))]
-    return A,B,C,G
+    return A,B,C,G,ABC
 end
 
-# model = Pendulum3D()
-# dt = 0.01
-# R0 = UnitQuaternion(.9999,.0001,0, 0)
-# x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
-# z = KnotPoint(x0,[1.],dt)
+model = Pendulum3D()
+dt = 0.01
+R0 = UnitQuaternion(.9999,.0001,0, 0)
+x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
+z = KnotPoint(x0,[1.],dt)
 
-# # Evaluate the discrete dynamics and Jacobian
-# x′ = RD.discrete_dynamics(PassThrough, model, z)
-# println(x′[4:7])
+# Evaluate the discrete dynamics and Jacobian
+x′ = RD.discrete_dynamics(PassThrough, model, z)
+println(x′[4:7])
 
-# A,B,C,G = discrete_jacobian_MC(PassThrough, model, z)
-# println(A)
+A,B,C,G,ABC = Altro.discrete_jacobian_MC(PassThrough, model, z)
+println(A)
+
+n,m = size(model)
+n̄ = state_diff_size(model)
+G1 = SizedMatrix{n,n̄}(zeros(n,n̄))
+RD.state_diff_jacobian!(G1, RD.LieState(model), SVector{13}(x0))
+G2 = SizedMatrix{n,n̄}(zeros(n,n̄))
+RD.state_diff_jacobian!(G2, RD.LieState(model), SVector{13}(x′))
+
+tmpA = ABC[:,1:13]
+tmpB = ABC[:,14:14]
+tmpC = ABC[:,15:end]
+
+DA = G2'tmpA*G1
+DB = G2'tmpB
+DC = G2'tmpC
