@@ -237,7 +237,7 @@ Qf = zeros(4)
 Qf[1] = Qf[2] = 2500
 Qf = Diagonal(SVector{4}(Qf))
 N = 300
-obj = MCObjective(Q,R,Qf,zf,N;uf = uf)
+obj = RCObjective(Q,R,Qf,zf,N;uf = uf)
 
 
 
