@@ -59,12 +59,12 @@ end
 zf = @SVector [0,2,0,0] 
 uf = @SVector [0,0]
 Q = zeros(4)
-Q[1] = Q[2] = 1e-5
+Q[1] = Q[2] = 1e-4
 Q[3] = Q[4] = 1e-2
 Q = Diagonal(SVector{4}(Q))
 R = Diagonal(@SVector fill(1e-4, 2))
 Qf = zeros(4)
-Qf[1] = Qf[2] = 1500
+Qf[1] = Qf[2] = 2000
 Qf = Diagonal(SVector{4}(Qf))
 obj = RCObjective(Q,R,Qf,zf,N;uf = uf)
 
@@ -75,7 +75,7 @@ cons = ConstraintList(n,m,N)
 prob = Problem(model, obj, xf, tf, x0=x0, constraints=cons);
 
 # intial rollout with random controls
-U0 = [SVector{2}(.01*rand(2)) for k = 1:N-1]
+U0 = [SVector{2}([0.0,-0.011]) for k = 1:N-1]
 initial_controls!(prob, U0)
 rollout!(prob);
 
