@@ -1,18 +1,21 @@
-using MeshCat, GeometryTypes, CoordinateTransformations, Colors
-using GeometryTypes: HyperRectangle, HyperSphere, Vec, Point
-using LinearMaps
+using MeshCat, GeometryTypes, GeometryBasics, CoordinateTransformations, Colors
+using GeometryTypes: HyperRectangle, Vec
 
-# visualize!(model,X,.001)
-function visualize!(m::Acrobot3D,Z,Δt)
-    l1,l2 = m.lengths
-    r1,r2 = m.radii
+get_lengths(m::Acrobot3D) = m.lengths
+get_radii(m::Acrobot3D) = m.radii
+get_lengths(m) = m.l1, m.l2 # DoublePendulumRC and MC
+get_radii(m) = fill(.1, 2) # DoublePendulumRC and MC
+
+function visualize!(m,Z,Δt)
+    l1,l2 = get_lengths(m)
+    r1,r2 = get_radii(m)
     N = length(Z)
 
     vis = Visualizer()
     open(vis)
 
-    link1 = GeometryTypes.Rect{3,Float64}(Vec(-r1/2, -r1/2, -l1/2), Vec(r1, r1, l1))
-    link2 = GeometryTypes.Rect{3,Float64}(Vec(-r2/2, -r2/2, -l2/2), Vec(r2, r2, l2))
+    link1 = GeometryBasics.Rect{3,Float64}(Vec(-r1/2, -r1/2, -l1/2), Vec(r1, r1, l1))
+    link2 = GeometryBasics.Rect{3,Float64}(Vec(-r2/2, -r2/2, -l2/2), Vec(r2, r2, l2))
 
     setobject!(vis["link1"], link1, MeshPhongMaterial(color=RGB(0, 1, 0)))
     setobject!(vis["link2"], link2, MeshPhongMaterial(color=RGB(0, 1, 0)))

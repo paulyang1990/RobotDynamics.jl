@@ -28,15 +28,20 @@ struct Acrobot3D{R,T} <: LieGroupModelMC{R}
         r1,r2 = radii
 
         mass = Diagonal([m1,m1,m1,m2,m2,m2])
-        iner = Diagonal([1.0/12.0*m1*l1^2,1.0/12.0*m1*l1^2,.5*m1*r1^2,
-                        1.0/12.0*m2*l2^2,1.0/12.0*m2*l2^2,.5*m2*r2^2])
+        I1 = 1/4*m1*r1^2 + 1/12*m1*l1^2
+        I2 = 1/4*m2*r2^2 + 1/12*m2*l2^2
+        iner = Diagonal([I1, I1, .5*m1*r1^2,
+                         I2, I2, .5*m2*r2^2])
+
         new(masses, lengths, radii, mass, iner, 9.81, 10)
     end 
 end
 Acrobot3D() = Acrobot3D{UnitQuaternion{Float64},Float64}(ones(2), ones(2), .1*ones(2))
 
 Altro.config_size(model::Acrobot3D) = 14
-RD.LieState(::Acrobot3D{R}) where R = RD.LieState(R, (3,3,12))
+Lie_P(::Acrobot3D) = (3,3,12)
+RD.LieState(::Acrobot3D{R}) where R = RD.LieState(R,(3,3,12))
+
 RD.control_dim(::Acrobot3D) = 1
 
 function max_constraints(model::Acrobot3D, x)
@@ -90,18 +95,22 @@ function get_vels(model::Acrobot3D, x)
     return v1, ω1, v2, ω2
 end
 
+function LieState_w_type(model, T)
+
+end
+
 function propagate_config!(model::Acrobot3D, x⁺, x, dt)
     nq, nv, _ = mc_dims(model)
 
     vec = RD.vec_states(model, x)
-    rot = RD.rot_states(model, x)
+    rot = RD.rot_states(RD.LieState(UnitQuaternion{eltype(x)}, Lie_P(model)), x)
 
     v1⁺, ω1⁺, v2⁺, ω2⁺ = get_vels(model, x⁺)
 
     pos1⁺ = vec[1] + v1⁺*dt
     pos2⁺ = vec[2] + v2⁺*dt
-    quat1⁺ = RS.params(RS.expm(ω1⁺*dt) * UnitQuaternion(rot[1]))
-    quat2⁺ = RS.params(RS.expm(ω2⁺*dt) * UnitQuaternion(rot[2]))
+    quat1⁺ = RS.params(RS.expm(ω1⁺*dt) * rot[1])
+    quat2⁺ = RS.params(RS.expm(ω2⁺*dt) * rot[2])
 
     x⁺[1:nq] = [pos1⁺; quat1⁺; pos2⁺; quat2⁺]
     return 
@@ -135,10 +144,10 @@ function f_vel(model::Acrobot3D, x⁺, x, u, λ, dt)
     ft1 = M[1]*(v1⁺-v1)/dt - fs[1]
     ft2 = M[2]*(v2⁺-v2)/dt - fs[2]
 
-    fr1 = sqrt(1/dt^2-ω1⁺'ω1⁺)*I1*ω1⁺ - sqrt(1/dt^2-ω1'ω1)*I1*ω1 + cross(ω1⁺,I1*ω1⁺) + cross(ω1,I1*ω1) - .5*τs[1]
-    fr2 = sqrt(1/dt^2-ω2⁺'ω2⁺)*I2*ω2⁺ - sqrt(1/dt^2-ω2'ω2)*I2*ω2 + cross(ω2⁺,I2*ω2⁺) + cross(ω2,I2*ω2) - .5*τs[2]
+    fr1 = sqrt(4/dt^2-ω1⁺'ω1⁺)*I1*ω1⁺ - sqrt(4/dt^2-ω1'ω1)*I1*ω1 + cross(ω1⁺,I1*ω1⁺) + cross(ω1,I1*ω1) - 2*τs[1]
+    fr2 = sqrt(4/dt^2-ω2⁺'ω2⁺)*I2*ω2⁺ - sqrt(4/dt^2-ω2'ω2)*I2*ω2 + cross(ω2⁺,I2*ω2⁺) + cross(ω2,I2*ω2) - 2*τs[2]
 
-    return [ft1;fr1;ft2;fr2]*dt-J'λ
+    return [ft1;fr1;ft2;fr2]-J'λ
 end
 
 function fc(model::Acrobot3D, x⁺, x, u, λ, dt)
@@ -185,12 +194,12 @@ function adjust_step_size!(model::Acrobot3D, x⁺, Δs)
     Δω1, Δω2 = Δs[1:3], Δs[4:6]
     γ = 1.0
     while (ω1-γ*Δω1)'*(ω1-γ*Δω1) > (1/dt^2)
-        print("%")
+        # print("%")
         γ /= 2
     end
     
     while (ω2-γ*Δω2)'*(ω2-γ*Δω2) > (1/dt^2)
-        print("%")
+        # print("%")
         γ /= 2
     end
     Δs .= γ*Δs
@@ -214,7 +223,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
 
     max_iters, line_iters, ϵ = 100, 20, 1e-12
     for i=1:max_iters  
-        print("iter ", i, ": ")
+        # print("iter ", i, ": ")
 
         # Newton step    
         err_vec = fc(model, x⁺, x, u, λ, dt)
@@ -226,18 +235,18 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
         j=0
         err_new = err + 1        
         while (err_new > err) && (j < line_iters)
-            print("-")
+            # print("-")
             adjust_step_size!(model, x⁺, Δs)
             line_step!(model, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
             _, ω1⁺, _, ω2⁺ = get_vels(model, x⁺_new)
             if (1/dt^2>=ω1⁺'ω1⁺) && (1/dt^2>=ω2⁺'ω2⁺)
-                print("!")
+                # print("!")
                 err_new = norm(fc(model, x⁺_new, x, u, λ_new, dt))
             end
             Δs /= 2
             j += 1
         end
-        println(" steps: ", j)
+        # println(" steps: ", j)
         x⁺ .= x⁺_new
         λ .= λ_new
 
@@ -290,28 +299,29 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
     ABC = -all_partials[:,1:n]\all_partials[:,n+1:end]
 
-    # att_jac = RS.∇differential(UnitQuaternion(x[4:7]...))
-    # att_jac⁺ = RS.∇differential(UnitQuaternion(x⁺[4:7]...))
+    att_jac = RS.∇differential(UnitQuaternion(x[4:7]...))
+    att_jac⁺ = RS.∇differential(UnitQuaternion(x⁺[4:7]...))
 
-    # ABC′ = zeros(2*nv,n+m+nc)
-    # ABC′[1:3, :] = ABC[1:3, :]
-    # ABC′[4:6, :] = att_jac⁺'*ABC[4:7, :]
-    # ABC′[nv .+ (1:nv), :] = ABC[nq .+ (1:nv), :]
+    ABC′ = zeros(2*nv,n+m+nc)
+    ABC′[1:3, :] = ABC[1:3, :]
+    ABC′[4:6, :] = att_jac⁺'*ABC[4:7, :]
+    ABC′[nv .+ (1:nv), :] = ABC[nq .+ (1:nv), :]
 
-    # A_big = ABC′[:, 1:(nq+nv)]
-    # B = ABC′[:, nq+nv .+ (1:m)]
-    # C = ABC′[:, nq+nv+m .+ (1:nc)]
+    A_big = ABC′[:, 1:(nq+nv)]
+    B = ABC′[:, nq+nv .+ (1:m)]
+    C = ABC′[:, nq+nv+m .+ (1:nc)]
 
-    # A = zeros(2*nv,2*nv)
-    # A[:, 1:3] =  A_big[:, 1:3]
-    # A[:, 4:6] = A_big[:, 4:7]*att_jac
-    # A[:, nv .+ (1:nv)] = A_big[:, nq .+ (1:nv)]
+    A = zeros(2*nv,2*nv)
+    A[:, 1:3] =  A_big[:, 1:3]
+    A[:, 4:6] = A_big[:, 4:7]*att_jac
+    A[:, nv .+ (1:nv)] = A_big[:, nq .+ (1:nv)]
 
     J = max_constraints_jacobian(model, x⁺)
     G = [J zeros(size(J))]
-    return ABC, G
+    return A, B, C, G
 end
 
+## DYANMICS
 model = Acrobot3D()
 dt = 0.001
 R01 = UnitQuaternion(RotX(.3))
@@ -323,17 +333,8 @@ x0 = [R01*[0.; 0.; -.5];
         zeros(12)]
 u0 = [0.]
 z = KnotPoint(x0,u0, dt)
-max_constraints(model, x0)
-
-# Evaluate the discrete dynamics 
+@show norm(max_constraints(model, x0)) 
 x1, λ = discrete_dynamics_MC(PassThrough, model, z)
-# display(x′[4:7]')
-# display(x′[7 .+ (4:7)]')
-# display(x′[14 .+ (4:6)]')
-# display(x′[20 .+ (4:6)]')
-
-f_vel(model, x1, x0, u0, λ, dt)
-
 
 ## ROLLOUT
 function quick_rollout(model, x0, u, dt, N)
@@ -347,8 +348,8 @@ function quick_rollout(model, x0, u, dt, N)
     return X
 end
 
-N = 10000
-dt = 1e-4
+N = 1000
+dt = 1e-3
 R01 = UnitQuaternion(RotX(.3))
 R02 = UnitQuaternion(RotX(.7))
 x0 = [R01*[0.; 0.; -.5]; 
@@ -357,24 +358,22 @@ x0 = [R01*[0.; 0.; -.5];
         RS.params(R02); 
         zeros(12)]
 
-X = quick_rollout(model, x0, [0.], dt, N)
-visualize!(model, X, dt)
-quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
-quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
-angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
-angles2 = [rotation_angle(quats2[i])*rotation_axis(quats2[i])[1] for i=1:N]
-# ω1 = [X[i][14+4] for i=1:N]
-# ω2 = [X[i][14+6+4] for i=1:N]
-# vy2 = [X[i][14+6+2] for i=1:N]
-# vz2 = [X[i][14+6+3] for i=1:N]
+X = quick_rollout(model, x0, [-.5], dt, N)
+# quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
+# quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
+# angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
+# angles2 = [rotation_angle(quats2[i])*rotation_axis(quats2[i])[1] for i=1:N]
 
-using Plots
-plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
-plt = plot!(angles2-angles1,  label = "θ2")
-display(plt)
+# using Plots
+# plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
+# plt = plot!(angles2-angles1,  label = "θ2")
+# display(plt)
+
+# include("2link_visualize.jl")
+# visualize!(model, X, dt)
 
 ## JACOBIAN
-# ABC, G = Altro.discrete_jacobian_MC(PassThrough, model, z)
+# A, B, C, G = Altro.discrete_jacobian_MC(PassThrough, model, z)
 
 # n,m = size(model)
 # n̄ = state_diff_size(model)
