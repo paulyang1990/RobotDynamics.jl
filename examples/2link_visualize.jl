@@ -1,10 +1,22 @@
+using Rotations
 using MeshCat, GeometryTypes, GeometryBasics, CoordinateTransformations, Colors
 using GeometryTypes: HyperRectangle, Vec
 
-get_lengths(m::Acrobot3D) = m.lengths
-get_radii(m::Acrobot3D) = m.radii
-get_lengths(m) = m.l1, m.l2 # DoublePendulumRC and MC
-get_radii(m) = fill(.1, 2) # DoublePendulumRC and MC
+function get_lengths(m)
+    if m isa LieGroupModelMC
+        return m.lengths # acrobot3D
+    else
+        return m.l1, m.l2 # DoublePendulumRC and MC
+    end
+end
+
+function get_radii(m)
+    if m isa LieGroupModelMC
+        return m.radii # acrobot3D
+    else
+        return fill(.1, 2) # DoublePendulumRC and MC
+    end
+end
 
 function visualize!(m,Z,Δt)
     l1,l2 = get_lengths(m)
@@ -24,13 +36,20 @@ function visualize!(m,Z,Δt)
     anim = MeshCat.Animation(Int(1/Δt))
     for k = 1:N
         atframe(anim, k-1) do
-            pos1 = Z[k][1:3]
-            quat1 = UnitQuaternion(Z[k][4:7])
-            pos2 = Z[k][7 .+ (1:3)]
-            quat2 = UnitQuaternion(Z[k][7 .+ (4:7)])
+            if m isa LieGroupModelMC # acrobot3D
+                pos1 = Z[k][1:3]
+                rot1 = UnitQuaternion(Z[k][4:7])
+                pos2 = Z[k][7 .+ (1:3)]
+                rot2 = UnitQuaternion(Z[k][7 .+ (4:7)])
+            else # double_pendulum
+                pos1 = [0; Z[k][1:2]]
+                rot1 = RotX(Z[k][3]-pi/2)
+                pos2 = [0; Z[k][4:5]]
+                rot2 = RotX(Z[k][6]-pi/2)
+            end
 
-            settransform!(vis["link1"], AffineMap(quat1,pos1))
-            settransform!(vis["link2"], AffineMap(quat2,pos2))
+            settransform!(vis["link1"], AffineMap(rot1,pos1))
+            settransform!(vis["link2"], AffineMap(rot2,pos2))
         end
     end
 

@@ -124,3 +124,7 @@ CSV.write("rc_d.csv",  DataFrame(d), writeheader=false)
 CSV.write("rc_xref.csv",  DataFrame(X2), writeheader=false)
 CSV.write("rc_uref.csv",  DataFrame(ctrl), writeheader=false)
 CSV.write("time.csv",  DataFrame([1:N-1]*dt), writeheader=false)
+
+# visualize
+include("2link_visualize.jl")
+visualize!(model, X_mc, dt)
