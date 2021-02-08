@@ -4,7 +4,7 @@ include("acrobot3D.jl")
 model = Acrobot3D()
 n, m = size(model)
 dt = 0.005
-N = 500
+N = 1000
 tf = (N-1)*dt     
 
 # initial and final conditions
@@ -25,15 +25,15 @@ function rc_to_mc(model::Acrobot3D, rc_x)
 end
 
 x0 = rc_to_mc(model, [.01, 0])
-xf = rc_to_mc(model, [.3, .4])
+xf = rc_to_mc(model, [.1, -.3])
 
 # objective
-Qf = Diagonal(@SVector fill(100., n))
-Q = Diagonal(@SVector fill(.01/dt, n))
-R = Diagonal(@SVector fill(0.001/dt, m))
+Qf = Diagonal(@SVector fill(250., n))
+Q = Diagonal(@SVector fill(1e-4/dt, n))
+R = Diagonal(@SVector fill(1e-4/dt, m))
 
-costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=0.1) for i=1:N]
-costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=100.0)
+costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-4) for i=1:N]
+costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=250.0)
 obj = Objective(costfuns);
 
 prob = Problem(model, obj, xf, tf, x0=x0);

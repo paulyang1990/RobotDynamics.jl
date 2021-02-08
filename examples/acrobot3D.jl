@@ -56,7 +56,7 @@ end
 
 function Altro.is_converged(model::Acrobot3D, x)
     c = max_constraints(model, x)
-    return norm(c) < 1e-12
+    return norm(c) < 1e-6
 end
 
 function max_constraints_jacobian(model::Acrobot3D, x⁺::Vector{T}) where T
@@ -70,10 +70,6 @@ function max_constraints_jacobian(model::Acrobot3D, x⁺::Vector{T}) where T
     G = SizedMatrix{n,n̄}(zeros(T,n,n̄))
     RD.state_diff_jacobian!(G, RD.LieState(UnitQuaternion{T}, (3,3,12)) , SVector{n}(x⁺))
     return J_big*G[1:nq,1:nv]
-
-    # R⁺ = UnitQuaternion(x⁺[4:7]...)
-    # att_jac⁺ = RS.∇differential(R⁺)
-    # return [J_big[:,1:3] J_big[:,4:7]*att_jac⁺]
 end
 
 function forces(model::Acrobot3D, x⁺, x, u)
@@ -93,10 +89,6 @@ function get_vels(model::Acrobot3D, x)
     v2 = vec[3][6 .+ (1:3)]
     ω2 = vec[3][6 .+ (4:6)]
     return v1, ω1, v2, ω2
-end
-
-function LieState_w_type(model, T)
-
 end
 
 function propagate_config!(model::Acrobot3D, x⁺, x, dt)
@@ -221,7 +213,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
 
     x⁺_new, λ_new = copy(x⁺), copy(λ)
 
-    max_iters, line_iters, ϵ = 100, 20, 1e-12
+    max_iters, line_iters, ϵ = 100, 20, 1e-6
     for i=1:max_iters  
         # print("iter ", i, ": ")
 
@@ -269,20 +261,21 @@ end
 
 function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
     z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
-    
-    if z.dt == 0
-        z.dt = 1e-4
-    end
 
     nq, nv, nc = mc_dims(model)
 
-    x = state(z) 
-    u = control(z)
-    t = z.t 
-    dt = z.dt
+    z_copy = copy(z)
+    if z_copy.dt == 0
+        z_copy.dt = 1e-4
+    end
+
+    x = state(z_copy) 
+    u = control(z_copy)
+    t = z_copy.t 
+    dt = z_copy.dt
 
     # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, z)
+    x⁺, λ = discrete_dynamics_MC(Q, model, z_copy)
 
     function f_imp(z)
         # Unpack
@@ -322,19 +315,19 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
 end
 
 ## DYANMICS
-model = Acrobot3D()
-dt = 0.001
-R01 = UnitQuaternion(RotX(.3))
-R02 = UnitQuaternion(RotX(.7))
-x0 = [R01*[0.; 0.; -.5]; 
-        RS.params(R01);
-        R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
-        RS.params(R02); 
-        zeros(12)]
-u0 = [0.]
-z = KnotPoint(x0,u0, dt)
-@show norm(max_constraints(model, x0)) 
-x1, λ = discrete_dynamics_MC(PassThrough, model, z)
+# model = Acrobot3D()
+# dt = 0.001
+# R01 = UnitQuaternion(RotX(.3))
+# R02 = UnitQuaternion(RotX(.7))
+# x0 = [R01*[0.; 0.; -.5]; 
+#         RS.params(R01);
+#         R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
+#         RS.params(R02); 
+#         zeros(12)]
+# u0 = [0.]
+# z = KnotPoint(x0,u0, dt)
+# @show norm(max_constraints(model, x0)) 
+# x1, λ = discrete_dynamics_MC(PassThrough, model, z)
 
 ## ROLLOUT
 function quick_rollout(model, x0, u, dt, N)
@@ -348,17 +341,17 @@ function quick_rollout(model, x0, u, dt, N)
     return X
 end
 
-N = 1000
-dt = 1e-3
-R01 = UnitQuaternion(RotX(.3))
-R02 = UnitQuaternion(RotX(.7))
-x0 = [R01*[0.; 0.; -.5]; 
-        RS.params(R01);
-        R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
-        RS.params(R02); 
-        zeros(12)]
+# N = 1000
+# dt = 1e-3
+# R01 = UnitQuaternion(RotX(.3))
+# R02 = UnitQuaternion(RotX(.7))
+# x0 = [R01*[0.; 0.; -.5]; 
+#         RS.params(R01);
+#         R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
+#         RS.params(R02); 
+#         zeros(12)]
 
-X = quick_rollout(model, x0, [-.5], dt, N)
+# X = quick_rollout(model, x0, [-.5], dt, N)
 # quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
 # quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
 # angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
