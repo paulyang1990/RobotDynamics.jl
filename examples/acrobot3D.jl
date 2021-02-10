@@ -44,6 +44,22 @@ RD.LieState(::Acrobot3D{R}) where R = RD.LieState(R,(3,3,12))
 
 RD.control_dim(::Acrobot3D) = 1
 
+function rc_to_mc(model::Acrobot3D, rc_x)
+    θ1 = rc_x[1]
+    θ2 = rc_x[2]
+    l1, l2 = model.lengths
+
+    R1 = UnitQuaternion(RotX(θ1))
+    R2 = UnitQuaternion(RotX(θ1+θ2))
+    mc_x = [R1*[0.; 0.; -l1/2]; 
+            RS.params(R1);
+            R1*[0.; 0.; -l1] + R2*[0.; 0.; -l2/2]; 
+            RS.params(R2); 
+            zeros(12)]
+
+    return mc_x
+end
+
 function max_constraints(model::Acrobot3D, x)
     l = model.lengths
     d1 = UnitQuaternion(x[4:7]...) * [0;0;-l[1]/2]
@@ -286,28 +302,24 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
         return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
     end
 
-    n = length(x)
-    m = length(u)
+    n,m = size(model)
+    n̄ = state_diff_size(model)
     
     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
     ABC = -all_partials[:,1:n]\all_partials[:,n+1:end]
+    
+    G1 = SizedMatrix{n,n̄}(zeros(n,n̄))
+    RD.state_diff_jacobian!(G1, RD.LieState(model), SVector{n}(x))
+    G2 = SizedMatrix{n,n̄}(zeros(n,n̄))
+    RD.state_diff_jacobian!(G2, RD.LieState(model), SVector{n}(x⁺))
 
-    att_jac = RS.∇differential(UnitQuaternion(x[4:7]...))
-    att_jac⁺ = RS.∇differential(UnitQuaternion(x⁺[4:7]...))
+    tmpA = ABC[:, 1:(nq+nv)]
+    tmpB = ABC[:, nq+nv .+ (1:m)]
+    tmpC = ABC[:, nq+nv+m .+ (1:nc)]
 
-    ABC′ = zeros(2*nv,n+m+nc)
-    ABC′[1:3, :] = ABC[1:3, :]
-    ABC′[4:6, :] = att_jac⁺'*ABC[4:7, :]
-    ABC′[nv .+ (1:nv), :] = ABC[nq .+ (1:nv), :]
-
-    A_big = ABC′[:, 1:(nq+nv)]
-    B = ABC′[:, nq+nv .+ (1:m)]
-    C = ABC′[:, nq+nv+m .+ (1:nc)]
-
-    A = zeros(2*nv,2*nv)
-    A[:, 1:3] =  A_big[:, 1:3]
-    A[:, 4:6] = A_big[:, 4:7]*att_jac
-    A[:, nv .+ (1:nv)] = A_big[:, nq .+ (1:nv)]
+    A = G2'tmpA*G1
+    B = G2'tmpB
+    C = G2'tmpC
 
     J = max_constraints_jacobian(model, x⁺)
     G = [J zeros(size(J))]

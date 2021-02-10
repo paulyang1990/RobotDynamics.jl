@@ -30,12 +30,14 @@ x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
 xf = [0.; 0.;  .5; 0; 1; 0; 0; zeros(6)]
 
 # objective
-Qf_diag = RD.fill_state(model, 100., 100., 100., 100.)
-Q_diag = RD.fill_state(model, .001/dt, 0.1/dt, .001/dt, .001/dt)
+Qf_diag = RD.fill_state(model, 100., 0., 100., 100.)
+Q_diag = RD.fill_state(model, .001/dt, 0., .001/dt, .001/dt)
 Qf = Diagonal(Qf_diag)
 Q = Diagonal(Q_diag)
-R = Diagonal(@SVector fill(0.001/dt,1))
+R = Diagonal(@SVector fill(0.0001/dt,1))
 
+# costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{13}(xf); w=0.1) for i=1:N]
+# costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{13}(xf); w=100.0)
 costfuns = [TO.QuatLQRCost(Q, R, SVector{13}(xf); w=0.1) for i=1:N]
 costfuns[end] = TO.QuatLQRCost(Qf, R, SVector{13}(xf); w=100.0)
 obj = Objective(costfuns);
@@ -60,4 +62,4 @@ plt = plot!([X[i][10] for i=1:N],  label = "θ dot")
 display(plt)
 
 U = controls(solver)
-plot([U...], legend=false, xlabel="time step",ylabel="torque")
+plot(U, legend=false, xlabel="time step",ylabel="torque")

@@ -8,38 +8,21 @@ N = 1000
 tf = (N-1)*dt     
 
 # initial and final conditions
-function rc_to_mc(model::Acrobot3D, rc_x)
-    θ1 = rc_x[1]
-    θ2 = rc_x[2]
-    l1, l2 = model.lengths
-
-    R1 = UnitQuaternion(RotX(θ1))
-    R2 = UnitQuaternion(RotX(θ1+θ2))
-    mc_x = [R1*[0.; 0.; -l1/2]; 
-            RS.params(R1);
-            R1*[0.; 0.; -l1] + R2*[0.; 0.; -l2/2]; 
-            RS.params(R2); 
-            zeros(12)]
-
-    return mc_x
-end
-
 x0 = rc_to_mc(model, [.01, 0])
-xf = rc_to_mc(model, [.1, -.3])
+xf = rc_to_mc(model, [pi, 0])
+# xf = rc_to_mc(model, [.1, -.3])
 
-# objective
+# problem
 Qf = Diagonal(@SVector fill(250., n))
 Q = Diagonal(@SVector fill(1e-4/dt, n))
 R = Diagonal(@SVector fill(1e-4/dt, m))
-
 costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-4) for i=1:N]
-costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=250.0)
+costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=300.0)
 obj = Objective(costfuns);
-
 prob = Problem(model, obj, xf, tf, x0=x0);
 
 # intial rollout with random controls
-U0 = [SVector{m}(.01*rand(m)) for k = 1:N-1]
+U0 = [SVector{m}(2.0*rand(m)) for k = 1:N-1]
 initial_controls!(prob, U0)
 rollout!(prob);
 
@@ -60,6 +43,11 @@ plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
 plt = plot!(angles2-angles1,  label = "θ2")
 display(plt)
 
+include("2link_visualize.jl")
+visualize!(model, X, dt)
+
 # plot control
 U = controls(solver)
-plot(vcat(U...))
+plot(U)
+
+# @save "acrobot_swing.jld2" X U

@@ -248,30 +248,30 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
     return A,B,C,G,ABC
 end
 
-model = Pendulum3D()
-dt = 0.01
-R0 = UnitQuaternion(.9999,.0001,0, 0)
-x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
-z = KnotPoint(x0,[1.],dt)
+# model = Pendulum3D()
+# dt = 0.01
+# R0 = UnitQuaternion(.9999,.0001,0, 0)
+# x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
+# z = KnotPoint(x0,[1.],dt)
 
-# Evaluate the discrete dynamics and Jacobian
-x′ = RD.discrete_dynamics(PassThrough, model, z)
-println(x′[4:7])
+# # Evaluate the discrete dynamics and Jacobian
+# x′ = RD.discrete_dynamics(PassThrough, model, z)
+# println(x′[4:7])
 
-A,B,C,G,ABC = Altro.discrete_jacobian_MC(PassThrough, model, z)
-println(A)
+# A,B,C,G,ABC = Altro.discrete_jacobian_MC(PassThrough, model, z)
+# println(A)
 
-n,m = size(model)
-n̄ = state_diff_size(model)
-G1 = SizedMatrix{n,n̄}(zeros(n,n̄))
-RD.state_diff_jacobian!(G1, RD.LieState(model), SVector{13}(x0))
-G2 = SizedMatrix{n,n̄}(zeros(n,n̄))
-RD.state_diff_jacobian!(G2, RD.LieState(model), SVector{13}(x′))
+# n,m = size(model)
+# n̄ = state_diff_size(model)
+# G1 = SizedMatrix{n,n̄}(zeros(n,n̄))
+# RD.state_diff_jacobian!(G1, RD.LieState(model), SVector{13}(x0))
+# G2 = SizedMatrix{n,n̄}(zeros(n,n̄))
+# RD.state_diff_jacobian!(G2, RD.LieState(model), SVector{13}(x′))
 
-tmpA = ABC[:,1:13]
-tmpB = ABC[:,14:14]
-tmpC = ABC[:,15:end]
+# tmpA = ABC[:,1:13]
+# tmpB = ABC[:,14:14]
+# tmpC = ABC[:,15:end]
 
-DA = G2'tmpA*G1
-DB = G2'tmpB
-DC = G2'tmpC
+# DA = G2'tmpA*G1
+# DB = G2'tmpB
+# DC = G2'tmpC
