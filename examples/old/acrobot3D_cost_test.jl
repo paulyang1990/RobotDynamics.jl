@@ -65,10 +65,10 @@ cf = costfuns[end]
 # by hand
 x1_v = x1[cf.vinds]
 xf_v = xf[cf.vinds]
-sum = .5*(x1_v-xf_v)'*Diagonal(cf.Q)*(x1_v-xf_v)
+sum = .5*(x1_v'-xf_v')*Diagonal(cf.Q)*(x1_v-xf_v)
 sum2 = TO.veccost(cf.Q, cf.q, x1, cf.vinds)+cf.c
 @show sum-sum2
 
-control_cost = .5u1'*Diagonal(cf.R)*u1 + cf.r'u1
+control_cost = .5u1'*Diagonal(cf.R)*u1 + dot(cf.r,u1)
 
 

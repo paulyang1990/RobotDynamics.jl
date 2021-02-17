@@ -117,9 +117,9 @@ function cost(X,U,Q,R,Qf,xf)
     N = size(X,2)
     J = 0.0
     for k = 1:N-1
-      J += 0.5*(X[:,k] - xf)'*Q*(X[:,k] - xf) + 0.5*U[:,k]'*R*U[:,k]
+      J += 0.5*(X[:,k]' - xf')*Q*(X[:,k] - xf) + 0.5*U[:,k]'*R*U[:,k]
     end
-    J += 0.5*(X[:,N] - xf)'*Qf*(X[:,N] - xf)
+    J += 0.5*(X[:,N]' - xf')*Qf*(X[:,N] - xf)
     return J
 end
 

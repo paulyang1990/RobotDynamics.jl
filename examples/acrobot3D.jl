@@ -205,12 +205,12 @@ function adjust_step_size!(model::Acrobot3D, x⁺, Δs)
     _, ω1, _, ω2 = get_vels(model, x⁺)
     Δω1, Δω2 = Δs[1:3], Δs[4:6]
     γ = 1.0
-    while (ω1-γ*Δω1)'*(ω1-γ*Δω1) > (1/dt^2)
+    while (ω1'-γ*Δω1')*(ω1-γ*Δω1) > (1/dt^2)
         # print("%")
         γ /= 2
     end
     
-    while (ω2-γ*Δω2)'*(ω2-γ*Δω2) > (1/dt^2)
+    while (ω2'-γ*Δω2')*(ω2-γ*Δω2) > (1/dt^2)
         # print("%")
         γ /= 2
     end

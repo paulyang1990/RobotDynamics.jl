@@ -63,3 +63,6 @@ plot_traj(states(altro), controls(altro))
 
 # include("2link_visualize.jl")
 # visualize!(model, X, dt)
+
+
+# @load "C:\\Users\\riann\\Google Drive\\ReposMC\\RobotDynamics.jl\\examples\\acrobot3D_swing.jld2"
