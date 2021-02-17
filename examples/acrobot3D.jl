@@ -5,10 +5,14 @@ using ForwardDiff
 using StaticArrays, LinearAlgebra
 using BenchmarkTools
 using Altro
+using Plots
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
 const RS = Rotations
+
+using TimerOutputs
+const to = TimerOutput()
 
 struct Acrobot3D{R,T} <: LieGroupModelMC{R}
     masses::Array{T,1}
@@ -32,7 +36,7 @@ struct Acrobot3D{R,T} <: LieGroupModelMC{R}
         I2 = 1/4*m2*r2^2 + 1/12*m2*l2^2
         iner = Diagonal([I1, I1, .5*m1*r1^2,
                          I2, I2, .5*m2*r2^2])
-
+        iner = Diagonal(ones(6))
         new(masses, lengths, radii, mass, iner, 9.81, 10)
     end 
 end
@@ -95,7 +99,7 @@ function forces(model::Acrobot3D, x⁺, x, u)
 end
 
 function torques(model::Acrobot3D, x⁺, x, u)
-    [[u[1];0;0], [-u[1];0;0]]
+    [[-u[1];0;0], [u[1];0;0]]
 end
 
 function get_vels(model::Acrobot3D, x)
@@ -214,12 +218,7 @@ function adjust_step_size!(model::Acrobot3D, x⁺, Δs)
 end
 
 function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D, 
-    z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
-  
-    x = state(z) 
-    u = control(z)
-    t = z.t 
-    dt = z.dt
+    x, u, t, dt) where {Q<:RobotDynamics.Explicit}
     
     nq, nv, nc = mc_dims(model)
 
@@ -234,10 +233,10 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
         # print("iter ", i, ": ")
 
         # Newton step    
-        err_vec = fc(model, x⁺, x, u, λ, dt)
+        err_vec =  @timeit to "fc" fc(model, x⁺, x, u, λ, dt)
         err = norm(err_vec)
-        F = fc_jacobian(model, x⁺, x, u, λ, dt)
-        Δs = F\err_vec
+        F = @timeit to "fc_jac" fc_jacobian(model, x⁺, x, u, λ, dt)
+        Δs = @timeit to "backslash" F\err_vec
        
         # line search
         j=0
@@ -245,11 +244,11 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
         while (err_new > err) && (j < line_iters)
             # print("-")
             adjust_step_size!(model, x⁺, Δs)
-            line_step!(model, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
+            @timeit to "linestep" line_step!(model, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
             _, ω1⁺, _, ω2⁺ = get_vels(model, x⁺_new)
             if (1/dt^2>=ω1⁺'ω1⁺) && (1/dt^2>=ω2⁺'ω2⁺)
                 # print("!")
-                err_new = norm(fc(model, x⁺_new, x, u, λ_new, dt))
+                err_new =  @timeit to "normfc" norm(fc(model, x⁺_new, x, u, λ_new, dt))
             end
             Δs /= 2
             j += 1
@@ -269,9 +268,14 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
     return x⁺, λ
 end
 
-function RD.discrete_dynamics(::Type{Q}, model::Acrobot3D, 
-    z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
-    x, λ = discrete_dynamics_MC(Q, model, z)
+# function RD.discrete_dynamics(::Type{Q}, model::Acrobot3D, 
+#     z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
+#     x, λ = discrete_dynamics_MC(Q, model, state(z), control(z), z.t, z.dt)
+#     return x
+# end
+
+function RD.discrete_dynamics(::Type{Q}, model::Acrobot3D, x, u, t, dt) where Q
+    x, λ = discrete_dynamics_MC(Q, model,  x, u, t, dt)
     return x
 end
 
@@ -280,18 +284,11 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
 
     nq, nv, nc = mc_dims(model)
 
-    z_copy = copy(z)
-    if z_copy.dt == 0
-        z_copy.dt = 1e-4
-    end
-
-    x = state(z_copy) 
-    u = control(z_copy)
-    t = z_copy.t 
-    dt = z_copy.dt
+    x = state(z) 
+    u = control(z)
 
     # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, z_copy)
+    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, max(1e-4, z.dt))
 
     function f_imp(z)
         # Unpack
@@ -339,7 +336,7 @@ end
 # u0 = [0.]
 # z = KnotPoint(x0,u0, dt)
 # @show norm(max_constraints(model, x0)) 
-# x1, λ = discrete_dynamics_MC(PassThrough, model, z)
+# x1, λ = discrete_dynamics_MC(PassThrough, model, state(z), control(z), z.t, z.dt)
 
 ## ROLLOUT
 function quick_rollout(model, x0, u, dt, N)
@@ -351,6 +348,27 @@ function quick_rollout(model, x0, u, dt, N)
         push!(X, xnext)
     end
     return X
+end
+
+function plot_traj(X, U)
+    N = length(X)
+    quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
+    quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
+    angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
+    angles2 = [rotation_angle(quats2[i])*rotation_axis(quats2[i])[1] for i=1:N]
+    del=.1
+    for i=2:N
+        if 2*pi - del < angles1[i-1]-angles1[i] < 2*pi + del
+            angles1[i]+=2*pi
+        end
+        if 2*pi - del < angles2[i-1]-angles2[i] < 2*pi + del
+            angles2[i]+=2*pi
+        end
+    end
+    plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
+    plt = plot!(angles2,  label = "θ2")
+    display(plt)
+    display(plot(U))
 end
 
 # N = 1000
@@ -379,7 +397,6 @@ end
 
 ## JACOBIAN
 # A, B, C, G = Altro.discrete_jacobian_MC(PassThrough, model, z)
-
 # n,m = size(model)
 # n̄ = state_diff_size(model)
 # G1 = SizedMatrix{n,n̄}(zeros(n,n̄))

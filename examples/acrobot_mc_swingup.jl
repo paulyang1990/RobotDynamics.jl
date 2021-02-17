@@ -255,7 +255,7 @@ end
 X, U, K, l, X0, U0, Lam0 = solve(x0,m,f,getABCG,Q,R,Qf,xf,dt,tf,101,control_init="random");
 
 plot(range(0,stop=tf,length=size(X,2)),X[3:3:end,:]')
-# plot(U')
+plot(U')
 
 # angle1 = X[3,:]
 # angle2 = X[6,:]-X[3,:]
