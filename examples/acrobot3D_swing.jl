@@ -13,8 +13,8 @@ xf = rc_to_mc(model, [pi, 0])
 
 # objective
 Qf = Diagonal(@SVector fill(100., n))
-Q = Diagonal(@SVector fill(1e-2/dt, n))
-R = Diagonal(@SVector fill(1e-1/dt, m))
+Q = Diagonal(@SVector fill(1e-2, n))
+R = Diagonal(@SVector fill(1e-1, m))
 costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-2) for i=1:N]
 costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=100.0)
 obj = Objective(costfuns);
@@ -41,17 +41,19 @@ opts = SolverOptions(
     penalty_scaling=10.,
     penalty_initial=1.0,
     constraint_tolerance=1e-4,
-    verbose=7, static_bp=0, iterations=200
+    verbose=7, static_bp=0, iterations=2
 )
 
 # ALTRO
+TimerOutputs.enable_debug_timings(Altro)
 altro = ALTROSolver(prob, opts)
 set_options!(altro, show_summary=true)
 solve!(altro);
 plot_traj(states(altro), controls(altro))
+show(altro.solver_al.solver_uncon.stats.to)
 
 # ILQR
-# opts = SolverOptions(verbose=7, static_bp=0, iterations=20, cost_tolerance=10.)
+# opts = SolverOptions(verbose=7, static_bp=0, iterations=20, cost_tolerance=1e-3)
 # ilqr = Altro.iLQRSolver(prob, opts);
 # solve!(ilqr);
 # plot_traj(states(ilqr), controls(ilqr))

@@ -275,11 +275,39 @@ end
 # end
 
 function RD.discrete_dynamics(::Type{Q}, model::Acrobot3D, x, u, t, dt) where Q
-    x, λ = discrete_dynamics_MC(Q, model,  x, u, t, dt)
+    x, λ = @timeit to "dd_MC" discrete_dynamics_MC(Q, model,  x, u, t, dt)
     return x
 end
 
-function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
+function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::Acrobot3D,
+    z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+    
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    nq, nv, nc = mc_dims(model)
+
+    x = state(z) 
+    u = control(z)
+
+    # compute next state and lagrange multiplier
+    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, max(1e-4, z.dt))
+
+    function f_imp(z)
+        # Unpack
+        _x⁺ = z[1:(nq+nv)]
+        _x = z[(nq+nv) .+ (1:nq+nv)]
+        _u = z[2*(nq+nv) .+ (1:m)]
+        _λ = z[2*(nq+nv)+m .+ (1:nc)]
+        return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
+    end
+    
+    all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
+    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+
+    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+end
+
+function discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
     z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
 
     nq, nv, nc = mc_dims(model)
@@ -323,7 +351,7 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
     return A, B, C, G
 end
 
-## DYANMICS
+## DYNAMICS
 # model = Acrobot3D()
 # dt = 0.001
 # R01 = UnitQuaternion(RotX(.3))
@@ -396,18 +424,22 @@ end
 # visualize!(model, X, dt)
 
 ## JACOBIAN
-# A, B, C, G = Altro.discrete_jacobian_MC(PassThrough, model, z)
+# A1, B1, C1, G1 = discrete_jacobian_MC(PassThrough, model, z)
+
 # n,m = size(model)
-# n̄ = state_diff_size(model)
-# G1 = SizedMatrix{n,n̄}(zeros(n,n̄))
-# RD.state_diff_jacobian!(G1, RD.LieState(model), SVector{13}(x0))
-# G2 = SizedMatrix{n,n̄}(zeros(n,n̄))
-# RD.state_diff_jacobian!(G2, RD.LieState(model), SVector{13}(x′))
+# n̄ = RD.state_diff_size(model)
 
-# tmpA = ABC[:,1:13]
-# tmpB = ABC[:,14:14]
-# tmpC = ABC[:,15:end]
+# DExp = TO.DynamicsExpansionMC(model)
+# diff1 = SizedMatrix{n,n̄}(zeros(n,n̄))
+# RD.state_diff_jacobian!(diff1, RD.LieState(model), SVector{n}(x0))
+# diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
+# RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x1))
 
-# DA = G2'tmpA*G1
-# DB = G2'tmpB
-# DC = G2'tmpC
+# Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
+# TO.save_tmp!(DExp)
+# TO.error_expansion!(DExp, diff1, diff2)
+# A2, B2, C2, G2 = TO.error_expansion(DExp, model)
+# @show extrema(A1 - A2)
+# @show extrema(B1 - B2)
+# @show extrema(C1 - C2)
+# @show extrema(G1 - G2)
