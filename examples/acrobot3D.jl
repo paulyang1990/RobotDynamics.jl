@@ -163,8 +163,8 @@ function f_vel(model::Acrobot3D, x⁺, x, u, λ, dt)
 end
 
 function fc(model::Acrobot3D, x⁺, x, u, λ, dt)
-    f = f_vel(model, x⁺, x, u, λ, dt)
-    c = max_constraints(model, x⁺)
+    f = @timeit to "f_vel" f_vel(model, x⁺, x, u, λ, dt)
+    c = @timeit to "max_con" max_constraints(model, x⁺)
     return [f;c]
 end
 
@@ -180,7 +180,7 @@ function fc_jacobian(model::Acrobot3D, x⁺, x, u, λ, dt)
         propagate_config!(model, _x⁺, x, dt)
         fc(model, _x⁺, x, u, _λ, dt)
     end
-    ForwardDiff.jacobian(fc_aug, [x⁺[nq .+ (1:nv)];λ])
+    @timeit to "fd_jac" ForwardDiff.jacobian(fc_aug, [x⁺[nq .+ (1:nv)];λ])
 end
 
 function line_step!(model::Acrobot3D, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
@@ -229,7 +229,7 @@ function discrete_dynamics_MC(::Type{Q}, model::Acrobot3D,
     x⁺_new, λ_new = copy(x⁺), copy(λ)
 
     max_iters, line_iters, ϵ = 100, 20, 1e-6
-    for i=1:max_iters  
+    @timeit to "for loop" for i=1:max_iters  
         # print("iter ", i, ": ")
 
         # Newton step    
@@ -290,7 +290,7 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::Acrobot3D,
     u = control(z)
 
     # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, max(1e-4, z.dt))
+    x⁺, λ = @timeit to "dd_MC" discrete_dynamics_MC(Q, model, x, u, z.t, max(1e-4, z.dt))
 
     function f_imp(z)
         # Unpack
@@ -301,10 +301,10 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::Acrobot3D,
         return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
     end
     
-    all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
-    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+    all_partials =  @timeit to "fd jac" ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
+    ∇f .=  @timeit to "backslash" -all_partials[:,1:n]\all_partials[:,n+1:end]
 
-    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+    G[:,1:n̄-nv] .= @timeit to "mc jac" max_constraints_jacobian(model, x⁺)
 end
 
 function discrete_jacobian_MC(::Type{Q}, model::Acrobot3D,
@@ -399,17 +399,19 @@ function plot_traj(X, U)
     display(plot(U))
 end
 
-# N = 1000
-# dt = 1e-3
-# R01 = UnitQuaternion(RotX(.3))
-# R02 = UnitQuaternion(RotX(.7))
-# x0 = [R01*[0.; 0.; -.5]; 
-#         RS.params(R01);
-#         R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
-#         RS.params(R02); 
-#         zeros(12)]
+N = 1000
+dt = 1e-3
+R01 = UnitQuaternion(RotX(.3))
+R02 = UnitQuaternion(RotX(.7))
+x0 = [R01*[0.; 0.; -.5]; 
+        RS.params(R01);
+        R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
+        RS.params(R02); 
+        zeros(12)]
 
-# X = quick_rollout(model, x0, [-.5], dt, N)
+reset_timer!(to)
+X = quick_rollout(model, x0, [-.5], dt, N)
+show(to)
 # quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
 # quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
 # angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
@@ -424,18 +426,21 @@ end
 # visualize!(model, X, dt)
 
 ## JACOBIAN
+z = KnotPoint(x0, u0, dt)
+reset_timer!(to)
 # A1, B1, C1, G1 = discrete_jacobian_MC(PassThrough, model, z)
 
 # n,m = size(model)
 # n̄ = RD.state_diff_size(model)
 
-# DExp = TO.DynamicsExpansionMC(model)
+DExp = TO.DynamicsExpansionMC(model)
 # diff1 = SizedMatrix{n,n̄}(zeros(n,n̄))
 # RD.state_diff_jacobian!(diff1, RD.LieState(model), SVector{n}(x0))
 # diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
 # RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x1))
 
-# Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
+@timeit to "dj_MC!" Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
+show(to)
 # TO.save_tmp!(DExp)
 # TO.error_expansion!(DExp, diff1, diff2)
 # A2, B2, C2, G2 = TO.error_expansion(DExp, model)

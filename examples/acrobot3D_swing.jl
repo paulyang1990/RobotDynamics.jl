@@ -41,7 +41,7 @@ opts = SolverOptions(
     penalty_scaling=10.,
     penalty_initial=1.0,
     constraint_tolerance=1e-4,
-    verbose=7, static_bp=0, iterations=2
+    verbose=7, static_bp=0, iterations=30
 )
 
 # ALTRO
@@ -49,8 +49,10 @@ TimerOutputs.enable_debug_timings(Altro)
 altro = ALTROSolver(prob, opts)
 set_options!(altro, show_summary=true)
 solve!(altro);
+# @save joinpath(@__DIR__, "acrobot3D_swing.jld2")
 plot_traj(states(altro), controls(altro))
 show(altro.solver_al.solver_uncon.stats.to)
+reset_timer!(altro.solver_al.solver_uncon.stats.to)
 
 # ILQR
 # opts = SolverOptions(verbose=7, static_bp=0, iterations=20, cost_tolerance=1e-3)
@@ -65,6 +67,5 @@ show(altro.solver_al.solver_uncon.stats.to)
 
 # include("2link_visualize.jl")
 # visualize!(model, X, dt)
-
 
 # @load "C:\\Users\\riann\\Google Drive\\ReposMC\\RobotDynamics.jl\\examples\\acrobot3D_swing.jld2"
