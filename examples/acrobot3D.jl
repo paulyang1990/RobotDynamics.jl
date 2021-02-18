@@ -388,30 +388,35 @@ function plot_traj(X, U)
     for i=2:N
         if 2*pi - del < angles1[i-1]-angles1[i] < 2*pi + del
             angles1[i]+=2*pi
+        elseif 2*pi - del < -angles1[i-1]+angles1[i] < 2*pi + del
+            angles1[i]-=2*pi
         end
         if 2*pi - del < angles2[i-1]-angles2[i] < 2*pi + del
             angles2[i]+=2*pi
+        elseif 2*pi - del < -angles2[i-1]+angles2[i] < 2*pi + del
+            angles2[i]-=2*pi
         end
     end
     plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
     plt = plot!(angles2,  label = "θ2")
     display(plt)
     display(plot(U))
+    return angles1, angles2
 end
 
-N = 1000
-dt = 1e-3
-R01 = UnitQuaternion(RotX(.3))
-R02 = UnitQuaternion(RotX(.7))
-x0 = [R01*[0.; 0.; -.5]; 
-        RS.params(R01);
-        R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
-        RS.params(R02); 
-        zeros(12)]
+# N = 1000
+# dt = 1e-3
+# R01 = UnitQuaternion(RotX(.3))
+# R02 = UnitQuaternion(RotX(.7))
+# x0 = [R01*[0.; 0.; -.5]; 
+#         RS.params(R01);
+#         R01*[0.; 0.; -1] + R02*[0.; 0.; -.5]; 
+#         RS.params(R02); 
+#         zeros(12)]
 
-reset_timer!(to)
-X = quick_rollout(model, x0, [-.5], dt, N)
-show(to)
+# reset_timer!(to)
+# X = quick_rollout(model, x0, [-.5], dt, N)
+# show(to)
 # quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
 # quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
 # angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
@@ -426,21 +431,21 @@ show(to)
 # visualize!(model, X, dt)
 
 ## JACOBIAN
-z = KnotPoint(x0, u0, dt)
-reset_timer!(to)
+# z = KnotPoint(x0, u0, dt)
+# reset_timer!(to)
 # A1, B1, C1, G1 = discrete_jacobian_MC(PassThrough, model, z)
 
 # n,m = size(model)
 # n̄ = RD.state_diff_size(model)
 
-DExp = TO.DynamicsExpansionMC(model)
+# DExp = TO.DynamicsExpansionMC(model)
 # diff1 = SizedMatrix{n,n̄}(zeros(n,n̄))
 # RD.state_diff_jacobian!(diff1, RD.LieState(model), SVector{n}(x0))
 # diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
 # RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x1))
 
-@timeit to "dj_MC!" Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
-show(to)
+# @timeit to "dj_MC!" Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
+# show(to)
 # TO.save_tmp!(DExp)
 # TO.error_expansion!(DExp, diff1, diff2)
 # A2, B2, C2, G2 = TO.error_expansion(DExp, model)
