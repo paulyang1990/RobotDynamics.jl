@@ -1,13 +1,14 @@
-# include("3DPendulum.jl")
+include("3DPendulum.jl")
 
 model = Pendulum3D()
+n̄ = state_diff_size(model)
 n,m = size(model)
 N = 300   
 dt = .01                  # number of knot points
 tf = (N-1)*dt           # final time
 
 # initial and final conditions
-R0 = UnitQuaternion(.9999,.0001,0, 0)
+R0 = UnitQuaternion(.9999,-.0001,0, 0)
 x0 = [R0*[0.; 0.; -.5]; RS.params(R0); zeros(6)]
 xf = [0.; 0.;  .5; 0; 1; 0; 0; zeros(6)]
 
@@ -32,8 +33,54 @@ z1 = KnotPoint(x0, u0, 0.)
 @show TO.stage_cost(liecf, z1)
 
 # compare gradients
+quatE = QuadraticCost{Float64}(n, m)
+TO.gradient!(quatE, quatcf, x0)
+TO.hessian!(quatE, quatcf, x0)
 
+lieE = QuadraticCost{Float64}(n, m)
+TO.gradient!(lieE, liecf, x0)
+TO.hessian!(lieE, liecf, x0)
 
+@show extrema(quatE.Q-lieE.Q)
+@show extrema(quatE.q-lieE.q)
+@show extrema(quatE.H-lieE.H)
+@show extrema(quatE.R-lieE.R)
+@show extrema(quatE.r-lieE.r)
+@show extrema(quatE.c-lieE.c)
+
+# error_expansion
+Z = RD.Traj([z])
+E = TO.QuadraticObjective(n̄,m,1)
+quad_obj = TO.QuadraticObjective(E, model)
+lieobj = Objective([liecf]);
+quatobj = Objective([quatcf]);
+G = [SizedMatrix{n,n̄}(zeros(n,n̄))]
+
+TO.state_diff_jacobian!(G, model, Z)
+TO.cost_expansion!(quad_obj, lieobj, Z, true, true)
+TO.error_expansion!(E, quad_obj, model, Z, G)
+lieQ = copy(E[1].Q)
+
+TO.cost_expansion!(quad_obj, quatobj, Z, true, true)
+TO.error_expansion!(E, quad_obj, model, Z, G)
+quatQ = copy(E[1].Q)
+
+# traj error_expansion
+z = KnotPoint(x0,[1.],dt)
+Z = RD.Traj([z])
+E = TO.QuadraticObjective(n̄,m,1)
+quad_obj = TO.QuadraticObjective(E, model)
+lieobj = Objective([liecf]);
+quatobj = Objective([quatcf]);
+G = [SizedMatrix{n,n̄}(zeros(n,n̄))]
+
+TO.state_diff_jacobian!(G, model, Z)
+TO.cost_expansion!(quad_obj, lieobj, Z, true, true)
+TO.error_expansion!(E, quad_obj, model, Z, G)
+lieQ = copy(E[1].Q)
+
+using SparseArrays
+display(spy(sparse(lieQ), marker=2, legend=nothing, c=palette([:black], 2)))
 
 # # intial rollout with random controls
 # U0 = [SVector{1}(.01*rand(1)) for k = 1:N-1]

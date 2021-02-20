@@ -194,7 +194,7 @@ function RD.discrete_dynamics(::Type{Q}, model::Pendulum3D,
     return x
 end
 
-function Altro.discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
+function discrete_jacobian_MC(::Type{Q}, model::Pendulum3D,
     z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
     
     if z.dt == 0

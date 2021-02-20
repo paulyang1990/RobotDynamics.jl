@@ -2,7 +2,7 @@ using Rotations
 using MeshCat, GeometryTypes, GeometryBasics, CoordinateTransformations, Colors
 using GeometryTypes: HyperRectangle, Vec
 
-function visualize!(m::nPendulum3D, Z, Δt)
+function visualize!(m, Z, Δt)
     l, r, nb = m.lengths, m.radii, m.nb
     P = Lie_P(m)
     N = length(Z)

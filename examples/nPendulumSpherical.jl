@@ -10,7 +10,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 const RS = Rotations
 
-struct nPendulum3D{R,T} <: LieGroupModelMC{R}
+struct nPendulumSpherical{R,T} <: LieGroupModelMC{R}
     masses::Array{T,1}
     lengths::Array{T,1}
     radii::Array{T,1} 
@@ -20,27 +20,28 @@ struct nPendulum3D{R,T} <: LieGroupModelMC{R}
     nb::Int # number of rigid bodies
     p::Int # constraint force dimension
  
-    function nPendulum3D{R,T}(masses, lengths, radii) where {R<:Rotation, T<:Real} 
+    function nPendulumSpherical{R,T}(masses, lengths, radii) where {R<:Rotation, T<:Real} 
         @assert length(masses) == length(lengths) == length(radii)
         nb = length(masses)
         inertias = []
         for (m, l, r) in zip(masses, lengths, radii)
             Ixx = 1/4*m*r^2 + 1/12*m*l^2
-            push!(inertias, Diagonal([Ixx, Ixx, .5*m*r^2]))
+            push!(inertias, Diagonal(ones(3)))
+            # push!(inertias, Diagonal([Ixx, Ixx, .5*m*r^2]))
         end
 
-        new(masses, lengths, radii, inertias, 9.81, nb, 5*nb)
+        new(masses, lengths, radii, inertias, 9.81, nb, 3*nb)
     end 
 end
-nPendulum3D() = nPendulum3D{UnitQuaternion{Float64},Float64}(ones(2), ones(2), .1*ones(2))
-nPendulum3D(n) = nPendulum3D{UnitQuaternion{Float64},Float64}(ones(n), ones(n), .1*ones(n))
+nPendulumSpherical() = nPendulumSpherical{UnitQuaternion{Float64},Float64}(ones(2), ones(2), .1*ones(2))
+nPendulumSpherical(n) = nPendulumSpherical{UnitQuaternion{Float64},Float64}(ones(n), ones(n), .1*ones(n))
 
-Altro.config_size(model::nPendulum3D) = 7*model.nb
-Lie_P(model::nPendulum3D) = (fill(3, model.nb)..., Int(6*model.nb))
-RD.LieState(model::nPendulum3D{R}) where R = RD.LieState(R,Lie_P(model))
-RD.control_dim(model::nPendulum3D) = model.nb
+Altro.config_size(model::nPendulumSpherical) = 7*model.nb
+Lie_P(model::nPendulumSpherical) = (fill(3, model.nb)..., Int(6*model.nb))
+RD.LieState(model::nPendulumSpherical{R}) where R = RD.LieState(R,Lie_P(model))
+RD.control_dim(model::nPendulumSpherical) = 3*model.nb
 
-function max_constraints(model::nPendulum3D{R}, x) where R
+function max_constraints(model::nPendulumSpherical{R}, x) where R
     nq = config_size(model)
     P = Lie_P(model)
     lie = RD.LieState(UnitQuaternion{eltype(x)}, (P[1:end-1]..., 0))
@@ -62,21 +63,15 @@ function max_constraints(model::nPendulum3D{R}, x) where R
         c[3*(i-1) .+ (1:3)] = (pos[i-1] + d1) - (pos[i] - d2)
     end
     
-    # all link orientation constraint
-    shift = 3*model.nb
-    for i=1:model.nb
-        c[(shift + 2*(i-1)) .+ (1:2)] = RS.params(rot[i])[3:4]
-    end
-    
     return c
 end
 
-function Altro.is_converged(model::nPendulum3D, x)
+function Altro.is_converged(model::nPendulumSpherical, x)
     c = max_constraints(model, x)
     return norm(c) < 1e-6
 end
 
-function max_constraints_jacobian(model::nPendulum3D, x⁺::Vector{T}) where T
+function max_constraints_jacobian(model::nPendulumSpherical, x⁺::Vector{T}) where T
     nq, nv, _ = mc_dims(model)
     c_aug(x) = max_constraints(model, x)
     J_big = ForwardDiff.jacobian(c_aug, x⁺[1:nq])
@@ -89,20 +84,21 @@ function max_constraints_jacobian(model::nPendulum3D, x⁺::Vector{T}) where T
     return J_big*G[1:nq,1:nv]
 end
 
-function forces(model::nPendulum3D, x⁺, x, u)
+function forces(model::nPendulumSpherical, x⁺, x, u)
     nb = model.nb
     g = model.g
     [[0;0;-model.masses[i]*g] for i=1:nb]
 end
 
-function torques(model::nPendulum3D, x⁺, x, u)
+function torques(model::nPendulumSpherical, x⁺, x, u)
     nb = model.nb
-    torques = [[u[i]-u[i-1];0;0] for i=1:nb-1]
-    push!(torques, u[nb])
+    ind = [3*(i-1) .+ (1:3) for i=1:nb]
+    torques = [u[ind[i]]-u[ind[i+1]] for i=1:nb-1]
+    push!(torques, u[ind[nb]])
     return torques
 end
 
-function get_vels(model::nPendulum3D, x)
+function get_vels(model::nPendulumSpherical, x)
     nb = model.nb
     vec = RD.vec_states(model, x)[end]    
     vs = [vec[6*(i-1) .+ (1:3)] for i=1:nb]
@@ -110,7 +106,7 @@ function get_vels(model::nPendulum3D, x)
     return vs, ωs
 end
 
-function propagate_config!(model::nPendulum3D{R}, x⁺::Vector{T}, x, dt) where {R, T}
+function propagate_config!(model::nPendulumSpherical{R}, x⁺::Vector{T}, x, dt) where {R, T}
     nb = model.nb
     nq, nv, _ = mc_dims(model)
     P = Lie_P(model)
@@ -129,19 +125,19 @@ function propagate_config!(model::nPendulum3D{R}, x⁺::Vector{T}, x, dt) where 
     return 
 end
 
-function propagate_config(model::nPendulum3D, x⁺, x, dt)
+function propagate_config(model::nPendulumSpherical, x⁺, x, dt)
     x⁺ = copy(x⁺)
     propagate_config!(model, x⁺, x, dt)
     nq = config_size(model)
     return x⁺[1:nq]
 end
 
-function f_pos(model::nPendulum3D, x⁺, x, u, λ, dt)
+function f_pos(model::nPendulumSpherical, x⁺, x, u, λ, dt)
     nq = config_size(model)
     return x⁺[1:nq] - propagate_config(model, x⁺, x, dt)
 end
 
-function f_vel(model::nPendulum3D, x⁺, x, u, λ, dt)
+function f_vel(model::nPendulumSpherical, x⁺, x, u, λ, dt)
     J = max_constraints_jacobian(model, x⁺)
     
     nb = model.nb
@@ -172,13 +168,13 @@ function f_vel(model::nPendulum3D, x⁺, x, u, λ, dt)
     return f_vels - J'λ
 end
 
-function fc(model::nPendulum3D, x⁺, x, u, λ, dt)
+function fc(model::nPendulumSpherical, x⁺, x, u, λ, dt)
     f = f_vel(model, x⁺, x, u, λ, dt)
     c = max_constraints(model, x⁺)
     return [f;c]
 end
 
-function fc_jacobian(model::nPendulum3D, x⁺, x, u, λ, dt)
+function fc_jacobian(model::nPendulumSpherical, x⁺, x, u, λ, dt)
     nq, nv, nc = mc_dims(model)
 
     function fc_aug(s)
@@ -193,7 +189,7 @@ function fc_jacobian(model::nPendulum3D, x⁺, x, u, λ, dt)
     ForwardDiff.jacobian(fc_aug, [x⁺[nq .+ (1:nv)];λ])
 end
 
-function line_step!(model::nPendulum3D, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
+function line_step!(model::nPendulumSpherical, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
     nq, nv, nc = mc_dims(model)
     
     # update lambda
@@ -209,7 +205,7 @@ function line_step!(model::nPendulum3D, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
     return    
 end
 
-# function adjust_step_size!(model::nPendulum3D, x⁺, Δs)
+# function adjust_step_size!(model::nPendulumSpherical, x⁺, Δs)
 #     return
 #     Δs ./= maximum(abs.(Δs[1:6]))/100
 #     _, ωs = get_vels(model, x⁺)
@@ -227,14 +223,9 @@ end
 #     Δs .= γ*Δs
 # end
 
-function discrete_dynamics_MC(::Type{Q}, model::nPendulum3D, 
-    z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
+function discrete_dynamics_MC(::Type{Q}, model::nPendulumSpherical, 
+    x, u, t, dt) where {Q<:RobotDynamics.Explicit}
   
-    x = state(z) 
-    u = control(z)
-    t = z.t 
-    dt = z.dt
-    
     nq, nv, nc = mc_dims(model)
 
     # initial guess
@@ -283,29 +274,23 @@ function discrete_dynamics_MC(::Type{Q}, model::nPendulum3D,
     return x⁺, λ
 end
 
-function RD.discrete_dynamics(::Type{Q}, model::nPendulum3D, 
-    z::AbstractKnotPoint) where {Q<:RobotDynamics.Explicit}
-    x, λ = discrete_dynamics_MC(Q, model, z)
+function RD.discrete_dynamics(::Type{Q}, model::nPendulumSpherical, x, u, t, dt) where Q
+    x, λ = discrete_dynamics_MC(Q, model,  x, u, t, dt)
     return x
 end
 
-function Altro.discrete_jacobian_MC(::Type{Q}, model::nPendulum3D,
+function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::nPendulumSpherical,
     z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
 
+    n,m = size(model)
+    n̄ = state_diff_size(model)
     nq, nv, nc = mc_dims(model)
 
-    z_copy = copy(z)
-    if z_copy.dt == 0
-        z_copy.dt = 1e-4
-    end
-
-    x = state(z_copy) 
-    u = control(z_copy)
-    t = z_copy.t 
-    dt = z_copy.dt
+    x = state(z) 
+    u = control(z)
 
     # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, z_copy)
+    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, max(1e-4, z.dt))
 
     function f_imp(z)
         # Unpack
@@ -316,32 +301,10 @@ function Altro.discrete_jacobian_MC(::Type{Q}, model::nPendulum3D,
         return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
     end
 
-    n = length(x)
-    m = length(u)
-    
     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
-    ABC = -all_partials[:,1:n]\all_partials[:,n+1:end]
+    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 
-    att_jac = RS.∇differential(UnitQuaternion(x[4:7]...))
-    att_jac⁺ = RS.∇differential(UnitQuaternion(x⁺[4:7]...))
-
-    ABC′ = zeros(2*nv,n+m+nc)
-    ABC′[1:3, :] = ABC[1:3, :]
-    ABC′[4:6, :] = att_jac⁺'*ABC[4:7, :]
-    ABC′[nv .+ (1:nv), :] = ABC[nq .+ (1:nv), :]
-
-    A_big = ABC′[:, 1:(nq+nv)]
-    B = ABC′[:, nq+nv .+ (1:m)]
-    C = ABC′[:, nq+nv+m .+ (1:nc)]
-
-    A = zeros(2*nv,2*nv)
-    A[:, 1:3] =  A_big[:, 1:3]
-    A[:, 4:6] = A_big[:, 4:7]*att_jac
-    A[:, nv .+ (1:nv)] = A_big[:, nq .+ (1:nv)]
-
-    J = max_constraints_jacobian(model, x⁺)
-    G = [J zeros(size(J))]
-    return A, B, C, G
+    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
 end
 
 # compute maximal coordinate configuration given body rotations
@@ -366,7 +329,7 @@ end
 
 ## DYANMICS
 # nb = 3
-# model = nPendulum3D(nb)
+# model = nPendulumSpherical(nb)
 # nq, nv, nc = mc_dims(model)
 # dt = 0.001
 # θ = [.3, .5, .7]
@@ -374,7 +337,8 @@ end
 # u0 = fill(.3, nb)
 # z = KnotPoint(x0, u0, dt)
 # @show norm(max_constraints(model, x0)) 
-# x1, λ = discrete_dynamics_MC(PassThrough, model, z)
+# x1 = RD.discrete_dynamics(PassThrough, model, z)
+# x1, λ = discrete_dynamics_MC(PassThrough, model, x0, u0, 0., dt)
 
 ## ROLLOUT
 function quick_rollout(model, x0, u, dt, N)
@@ -388,8 +352,45 @@ function quick_rollout(model, x0, u, dt, N)
     return X
 end
 
+function plot_traj(X, U)
+    N = length(X)
+    quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
+    quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
+    angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
+    angles2 = [rotation_angle(quats2[i])*rotation_axis(quats2[i])[1] for i=1:N]
+    del=.1
+    for i=2:N
+        if 2*pi - del < angles1[i-1]-angles1[i] < 2*pi + del
+            angles1[i]+=2*pi
+        elseif 2*pi - del < -angles1[i-1]+angles1[i] < 2*pi + del
+            angles1[i]-=2*pi
+        end
+        if 2*pi - del < angles2[i-1]-angles2[i] < 2*pi + del
+            angles2[i]+=2*pi
+        elseif 2*pi - del < -angles2[i-1]+angles2[i] < 2*pi + del
+            angles2[i]-=2*pi
+        end
+    end
+    plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
+    plt = plot!(angles2,  label = "θ2")
+    display(plt)
+    display(plot(U))
+    return angles1, angles2
+end
+
+function plot_diff(X, U, qref=UnitQuaternion(0.,1.,0.,0.))
+    N = length(X)
+    quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
+    errs1 = [[RS.rotation_error(quats1[i], qref, CayleyMap())...] for i=1:N]
+    quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
+    errs2 = [[RS.rotation_error(quats2[i], qref, CayleyMap())...] for i=1:N]
+    plot(hcat(errs1...)', xlabel="time step",ylabel="rotation err")
+    display(plot!(hcat(errs2...)'))
+    display(plot(U))
+end
+
 # nb = 6
-# model = nPendulum3D(nb)
+# model = nPendulumSpherical(nb)
 # nq, nv, nc = mc_dims(model)
 # N = 1000
 # dt = 1e-3
@@ -408,5 +409,26 @@ end
 # plt = plot!(angles2-angles1,  label = "θ2")
 # display(plt)
 
-# include("nPendulum3D_visualize.jl")
+# include("nPendulumSpherical_visualize.jl")
 # visualize!(model, X, dt)
+
+## JACOBIAN
+# n,m = size(model)
+# n̄ = RD.state_diff_size(model)
+
+# DExp = TO.DynamicsExpansionMC(model)
+# diff1 = SizedMatrix{n,n̄}(zeros(n,n̄))
+# RD.state_diff_jacobian!(diff1, RD.LieState(model), SVector{n}(x0))
+# diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
+# RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x1))
+
+# Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
+# TO.save_tmp!(DExp)
+# TO.error_expansion!(DExp, diff1, diff2)
+# A,B,C,G = TO.error_expansion(DExp, model)
+
+# using SparseArrays
+# display(spy(sparse(A), marker=2, legend=nothing, c=palette([:black], 2)))
+# display(spy(sparse(B), marker=2, legend=nothing, c=palette([:black], 2)))
+# display(spy(sparse(C), marker=2, legend=nothing, c=palette([:black], 2)))
+# display(spy(sparse(G), marker=2, legend=nothing, c=palette([:black], 2)))
