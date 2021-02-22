@@ -18,7 +18,7 @@ xf = [generate_config(model, fill(pi, model.nb)); zeros(nv)]
 # objective
 Qf = Diagonal(@SVector fill(250., n))
 Q = Diagonal(@SVector fill(1e-4/dt, n))
-R = Diagonal(@SVector fill(1e-2/dt, m))
+R = Diagonal(@SVector fill(1e-3/dt, m))
 costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-4) for i=1:N]
 costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=250.0)
 obj = Objective(costfuns);
@@ -40,9 +40,8 @@ plot_traj(states(prob), controls(prob))
 # visualize!(model, states(prob), dt)
 
 # ILQR
-opts = SolverOptions(verbose=7, static_bp=0, iterations=50, cost_tolerance=1e-2)
+opts = SolverOptions(verbose=7, static_bp=0, iterations=50, cost_tolerance=1e-4)
 ilqr = Altro.iLQRSolver(prob, opts);
 solve!(ilqr);
-plot_traj(states(ilqr), controls(ilqr))
+q1mat, q2mat, Umat = plot_traj(states(ilqr), controls(ilqr))
 visualize!(model, states(ilqr), dt)
-

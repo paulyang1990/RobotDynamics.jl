@@ -5,6 +5,7 @@ using ForwardDiff
 using StaticArrays, LinearAlgebra
 using BenchmarkTools
 using Altro
+using Plots
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
@@ -93,9 +94,11 @@ end
 function torques(model::nPendulumSpherical, x⁺, x, u)
     nb = model.nb
     ind = [3*(i-1) .+ (1:3) for i=1:nb]
-    torques = [u[ind[i]]-u[ind[i+1]] for i=1:nb-1]
-    push!(torques, u[ind[nb]])
-    return torques
+    return [u[ind[i]] for i=1:nb]
+    
+    # torques = [u[ind[i]]-u[ind[i+1]] for i=1:nb-1]
+    # push!(torques, u[ind[nb]])
+    # return torques
 end
 
 function get_vels(model::nPendulumSpherical, x)
@@ -119,7 +122,8 @@ function propagate_config!(model::nPendulumSpherical{R}, x⁺::Vector{T}, x, dt)
         vind = RD.vec_inds(R, P, i)
         x⁺[vind] = vec[i] + vs⁺[i]*dt
         rind = RD.rot_inds(R, P, i)
-        x⁺[rind] = RS.params(RS.expm(ωs⁺[i]*dt) * rot[i])
+        # x⁺[rind] = RS.params(RS.expm(rot[i] * ωs⁺[i]*dt) * rot[i])
+        x⁺[rind] = dt/2 * RS.lmult(rot[i]) * [sqrt(4/dt^2 - ωs⁺[i]'ωs⁺[i]); ωs⁺[i]]
     end
 
     return 
@@ -354,39 +358,18 @@ end
 
 function plot_traj(X, U)
     N = length(X)
-    quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
-    quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
-    angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
-    angles2 = [rotation_angle(quats2[i])*rotation_axis(quats2[i])[1] for i=1:N]
-    del=.1
-    for i=2:N
-        if 2*pi - del < angles1[i-1]-angles1[i] < 2*pi + del
-            angles1[i]+=2*pi
-        elseif 2*pi - del < -angles1[i-1]+angles1[i] < 2*pi + del
-            angles1[i]-=2*pi
-        end
-        if 2*pi - del < angles2[i-1]-angles2[i] < 2*pi + del
-            angles2[i]+=2*pi
-        elseif 2*pi - del < -angles2[i-1]+angles2[i] < 2*pi + del
-            angles2[i]-=2*pi
-        end
-    end
-    plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
-    plt = plot!(angles2,  label = "θ2")
-    display(plt)
-    display(plot(U))
-    return angles1, angles2
-end
+    quats1 = [X[i][4:7] for i=1:N]
+    quats2 = [X[i][7 .+ (4:7)] for i=1:N]
 
-function plot_diff(X, U, qref=UnitQuaternion(0.,1.,0.,0.))
-    N = length(X)
-    quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
-    errs1 = [[RS.rotation_error(quats1[i], qref, CayleyMap())...] for i=1:N]
-    quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
-    errs2 = [[RS.rotation_error(quats2[i], qref, CayleyMap())...] for i=1:N]
-    plot(hcat(errs1...)', xlabel="time step",ylabel="rotation err")
-    display(plot!(hcat(errs2...)'))
-    display(plot(U))
+    q1mat = hcat(quats1...)'
+    q2mat = hcat(quats2...)'
+    Umat = hcat(Vector.(U)...)'
+
+    display(plot(q1mat))
+    display(plot(q2mat))
+    display(plot(Umat))
+
+    return q1mat, q2mat, Umat
 end
 
 # nb = 6
