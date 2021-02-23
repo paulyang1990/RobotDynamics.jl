@@ -24,7 +24,7 @@ costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=250.0
 obj = Objective(costfuns);
 
 # problem
-prob = Problem(model, obj, xf, tf, x0=x0, constraints=conSet);
+prob = Problem(model, obj, xf, tf, x0=x0);
 
 # balancing torques
 m1, m2 = model.masses
@@ -42,6 +42,23 @@ plot_traj(states(prob), controls(prob))
 # ILQR
 opts = SolverOptions(verbose=7, static_bp=0, iterations=50, cost_tolerance=1e-4)
 ilqr = Altro.iLQRSolver(prob, opts);
+set_options!(ilqr, iterations=50, cost_tolerance=1e-6)
 solve!(ilqr);
 q1mat, q2mat, Umat = plot_traj(states(ilqr), controls(ilqr))
 visualize!(model, states(ilqr), dt)
+
+display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
+display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
+
+# X = states(ilqr)
+# U = controls(ilqr)
+# using JLD2
+# @save "npen_X_U.jld2" X U
+
+# @load "npen_X_U.jld2" X U
+# initial_controls!(prob, U)
+# rollout!(prob);
+# opts = SolverOptions(verbose=7, static_bp=0, iterations=50, cost_tolerance=1e-4)
+# ilqr = Altro.iLQRSolver(prob, opts);
+# set_options!(ilqr, iterations=1)
+# solve!(ilqr);

@@ -32,6 +32,11 @@ struct nPendulumSpherical{R,T} <: LieGroupModelMC{R}
         end
 
         new(masses, lengths, radii, inertias, 9.81, nb, 3*nb)
+    end
+    function nPendulumSpherical{R,T}(masses, lengths, radii, inertias) where {R<:Rotation, T<:Real} 
+        @assert length(masses) == length(lengths) == length(radii) == length(inertias)
+        nb = length(masses)
+        new(masses, lengths, radii, inertias, 9.81, nb, 3*nb)
     end 
 end
 nPendulumSpherical() = nPendulumSpherical{UnitQuaternion{Float64},Float64}(ones(2), ones(2), .1*ones(2))
@@ -95,10 +100,6 @@ function torques(model::nPendulumSpherical, x⁺, x, u)
     nb = model.nb
     ind = [3*(i-1) .+ (1:3) for i=1:nb]
     return [u[ind[i]] for i=1:nb]
-    
-    # torques = [u[ind[i]]-u[ind[i+1]] for i=1:nb-1]
-    # push!(torques, u[ind[nb]])
-    # return torques
 end
 
 function get_vels(model::nPendulumSpherical, x)
@@ -122,7 +123,6 @@ function propagate_config!(model::nPendulumSpherical{R}, x⁺::Vector{T}, x, dt)
         vind = RD.vec_inds(R, P, i)
         x⁺[vind] = vec[i] + vs⁺[i]*dt
         rind = RD.rot_inds(R, P, i)
-        # x⁺[rind] = RS.params(RS.expm(rot[i] * ωs⁺[i]*dt) * rot[i])
         x⁺[rind] = dt/2 * RS.lmult(rot[i]) * [sqrt(4/dt^2 - ωs⁺[i]'ωs⁺[i]); ωs⁺[i]]
     end
 
