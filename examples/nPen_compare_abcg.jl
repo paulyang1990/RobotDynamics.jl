@@ -7,6 +7,7 @@ using ConstrainedDynamicsVis
 using ConstrainedControl
 using LinearAlgebra
 using Rotations
+using StaticArrays
 
 # Parameters
 l1 = 1.0
@@ -18,8 +19,8 @@ vert12 = -vert11
 
 vert21 = [0.;0.;l2 / 2]
 
-# Desired orientation
-phi1 = pi
+# initial orientation
+phi1 = 0
 q1 = UnitQuaternion(RotX(phi1))
 
 # Links
@@ -45,7 +46,7 @@ bodyids = getid.(links)
 eqcids = getid.(constraints)
 Nb = 2
 xd = [[[0;0;0.5]];[[0;0;1.5]]]
-qd=[[UnitQuaternion(RotX(ϕ1))];[UnitQuaternion(RotX(ϕ2))]]
+qd=[[UnitQuaternion(RotX(pi))];[UnitQuaternion(RotX(pi))]]
 vd = [SA[0; 0; 0] for i=1:Nb]
 ωd = [SA[0; 0; 0] for i=1:Nb]
 Fτd = [SA[0; 0; 0] for i=1:length(eqcids)]
@@ -83,4 +84,11 @@ TO.save_tmp!(DExp)
 TO.error_expansion!(DExp, diff1, diff2)
 A,B,C,G = TO.error_expansion(DExp, model)
 
-A ≈ Aj
+# Janstate  x1    v1      q1      w1        x2       v2        q2        w2 
+# p =    [1 2 3. 4 5 6. 7 8 9. 10 11 12. 13 14 15. 16 17 18. 19 20 21. 22 23 24] 
+
+p = [1, 2, 3, 7, 8, 9, 13, 14, 15,  19, 20, 21, 4, 5, 6,  10, 11, 12, 16, 17, 18, 22, 23, 24]
+# our state x1 q1 x2 q2  v1 w1 v2 w2 
+Ape = Aj[:,p]
+A2 = Ape[p,:]
+A ≈ A2

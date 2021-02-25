@@ -27,8 +27,13 @@ struct nPendulumSpherical{R,T} <: LieGroupModelMC{R}
         inertias = []
         for (m, l, r) in zip(masses, lengths, radii)
             Ixx = 1/4*m*r^2 + 1/12*m*l^2
-            push!(inertias, Diagonal(ones(3)))
+            # push!(inertias, Diagonal(ones(3)))
             # push!(inertias, Diagonal([Ixx, Ixx, .5*m*r^2]))
+            x = r
+            y = r
+            z = l
+            push!(inertias, 1 / 12 * m * diagm([y^2 + z^2;x^2 + z^2;x^2 + y^2]))
+            
         end
 
         new(masses, lengths, radii, inertias, 9.81, nb, 3*nb)
