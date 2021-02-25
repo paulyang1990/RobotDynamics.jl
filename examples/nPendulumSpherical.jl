@@ -292,9 +292,11 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::nPendulumSpheric
 
     x = state(z) 
     u = control(z)
+    dt = z.dt
+    @assert dt != 0
 
     # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, max(1e-4, z.dt))
+    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, dt)
 
     function f_imp(z)
         # Unpack
@@ -415,3 +417,67 @@ end
 # display(spy(sparse(B), marker=2, legend=nothing, c=palette([:black], 2)))
 # display(spy(sparse(C), marker=2, legend=nothing, c=palette([:black], 2)))
 # display(spy(sparse(G), marker=2, legend=nothing, c=palette([:black], 2)))
+
+function test_ABC(∇f, model::nPendulumSpherical, z::AbstractKnotPoint{T,N,M′}) where {T,N,M′}
+
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    nq, nv, nc = mc_dims(model)
+
+    x = state(z) 
+    u = control(z)
+
+    # compute next state and lagrange multiplier
+    x⁺, λ = discrete_dynamics_MC(PassThrough, model, x, u, z.t, max(1e-4, z.dt))
+
+    function f_imp(z)
+        # Unpack
+        _x1⁺ = z[1:3]
+        _x2⁺ = z[4:6]
+        _v1⁺ = z[7:9]
+        _v2⁺ = z[10:12]
+        _q1⁺ = z[13:16]
+        _q2⁺ = z[17:20]
+        _ω1⁺ = z[21:23]
+        _ω2⁺ = z[24:26]
+        _x⁺ = [_x1⁺;_q1⁺;_x2⁺;_q2⁺;_v1⁺;_ω1⁺;_v2⁺;_ω2⁺]
+
+        _x1 = z[26 .+ (1:3)]
+        _x2 = z[26 .+ (4:6)]
+        _v1 = z[26 .+ (7:9)]
+        _v2 = z[26 .+ (10:12)]
+        _q1 = z[26 .+ (13:16)]
+        _q2 = z[26 .+ (17:20)]
+        _ω1 = z[26 .+ (21:23)]
+        _ω2 = z[26 .+ (24:26)]
+        _x = [_x1;_q1;_x2;_q2;_v1;_ω1;_v2;_ω2]
+
+        _u = z[2*(nq+nv) .+ (1:m)]
+        _λ = z[2*(nq+nv)+m .+ (1:nc)]
+        return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
+    end
+
+    x1⁺ = x⁺[1:3]
+    x2⁺ = x⁺[4:6]
+    v1⁺ = x⁺[7:9]
+    v2⁺ = x⁺[10:12]
+    q1⁺ = x⁺[13:16]
+    q2⁺ = x⁺[17:20]
+    ω1⁺ = x⁺[21:23]
+    ω2⁺ = x⁺[24:26]
+    x⁺_reordered = [x1⁺;x2⁺;v1⁺;v2⁺;q1⁺;q2⁺;ω1⁺;ω2⁺]
+
+    x1 = x[1:3]
+    x2 = x[4:6]
+    v1 = x[7:9]
+    v2 = x[10:12]
+    q1 = x[13:16]
+    q2 = x[17:20]
+    ω1 = x[21:23]
+    ω2 = x[24:26]
+    x_reordered = [x1;x2;v1;v2;q1;q2;ω1;ω2]
+
+    all_partials = ForwardDiff.jacobian(f_imp, [x⁺_reordered;x_reordered;u;λ])
+    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+
+end
