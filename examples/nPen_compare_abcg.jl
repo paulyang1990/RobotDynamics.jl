@@ -37,7 +37,7 @@ constraints = [socket0to1;socket1to2]
 
 
 mech = Mechanism(origin, links, constraints)
-mech.Δt = .001
+mech.Δt = 1e-7
 setPosition!(origin,link1,p2 = vert11,Δq = q1)
 setPosition!(link1,link2,p1 = vert12,p2 = vert21,Δq = one(UnitQuaternion))
 
@@ -91,4 +91,4 @@ p = [1, 2, 3, 7, 8, 9, 13, 14, 15,  19, 20, 21, 4, 5, 6,  10, 11, 12, 16, 17, 18
 # our state x1 q1 x2 q2  v1 w1 v2 w2 
 Ape = Aj[:,p]
 A2 = Ape[p,:]
-A ≈ A2
+println(extrema(A-A2))
