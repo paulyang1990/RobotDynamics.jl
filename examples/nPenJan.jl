@@ -28,7 +28,7 @@ end
 function nPenJan(mech::Mechanism{T,Nn,Nb,Ne,Ni}) where {T,Nn,Nb,Ne,Ni}
     p = 0
     m = 0
-    for eqc in eqcs
+    for eqc in mech.eqconstraints
         m += 6-length(eqc)
         CD.isinactive(eqc) && continue
         p += length(eqc)
@@ -41,6 +41,7 @@ function nPenJan()
     l1 = 1.0
     l2 = 1.0
     x, y = .1, .1
+    x=y=3.0 # for higher inertias
 
     vert11 = [0.;0.;l1 / 2]
     vert12 = -vert11
@@ -177,7 +178,7 @@ function discrete_jacobian_MC!(::Type{Q}, D, model, z) where Q
     D.G .= G
 end
 
-function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model, Z::Traj)
+function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::nPenJan, Z::Traj)
     for k in eachindex(D)
         if Z[k].dt == 0
             z = copy(Z[k])
@@ -204,18 +205,20 @@ function quick_rollout(model, x0, u, dt, N)
     return X
 end
 
-function plot_traj(X, U)
+function plot_traj_jan(X, U)
     N = length(X)
-    quats1 = [X[i][4:7] for i=1:N]
-    quats2 = [X[i][13 .+ (4:7)] for i=1:N]
+    nb = Int(length(X[1])/13)
+    qmats = []
+    for i=1:nb
+        xinds, vinds, qinds, ωinds = fullargsinds(i)  
+        quats = [X[i][qinds] for i=1:N]
+        qmat = hcat(quats...)'
+        display(plot(qmat))
+        push!(qmats, qmat)
+    end
 
-    q1mat = hcat(quats1...)'
-    q2mat = hcat(quats2...)'
     Umat = hcat(Vector.(U)...)'
-
-    display(plot(q1mat))
-    display(plot(q2mat))
     display(plot(Umat))
 
-    return q1mat, q2mat, Umat
+    return qmats, Umat
 end

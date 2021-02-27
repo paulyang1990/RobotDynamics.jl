@@ -47,7 +47,7 @@ J_prev = sum(_J)
 grad_only = false
 J = Altro.step!(ilqr, J_prev, grad_only)
 
-display(plot(hcat(Vector.(Vec.(ilqr.K[1:end-1]))...)',legend=false))
+display(plot(hcat(Vector.(vec.(ilqr.K[1:end-1]))...)',legend=false))
 
 # use converged LQR gains
 [ilqr.K[i]=ilqr.K[1] for i=2:N-1]
