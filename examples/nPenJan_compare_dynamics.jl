@@ -9,7 +9,7 @@ mech = model_j.mech
 x0_j = getStates(mech, false)
 u0 = [1,.1,0,1,.1,0]
 dt = mech.Δt = 1e-5
-N = 100
+N = 1000
 Xjan = quick_rollout(model_j, x0_j, u0, dt, N)
 Xjan2 = jan_to_og.(Xjan)
 

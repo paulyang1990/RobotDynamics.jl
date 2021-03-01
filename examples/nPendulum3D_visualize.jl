@@ -16,7 +16,7 @@ function visualize!(m, Z, Δt)
     end
 
     # Generate animation
-    anim = MeshCat.Animation(Int(1/Δt))
+    anim = MeshCat.Animation(round(Int,1/Δt))
     for k = 1:N
         atframe(anim, k-1) do
             pos = RD.vec_states(m, Z[k]) 

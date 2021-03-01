@@ -4,8 +4,8 @@ include("nPenJan.jl")
 model = nPenJan()
 mech = model.mech
 n,m = size(model)
-dt = mech.Δt = .005
-N = 1000
+dt = mech.Δt = 1e-5
+N = 100
 tf = (N-1)*dt  
 
 x0 = [0;0;-.5;zeros(3);1;zeros(6);0;0;-1.5;zeros(3);1;zeros(6)]
@@ -27,13 +27,13 @@ prob = Problem(model, obj, xf, tf, x0=x0);
 U0 = [u0 for k = 1:N-1]
 initial_controls!(prob, U0)
 rollout!(prob);
-plot_traj(states(prob), controls(prob))
+plot_traj_jan(states(prob), controls(prob))
 
 # ilqr
 opts = SolverOptions(verbose=7, static_bp=0, iterations=1, cost_tolerance=1e-2)
 ilqr = Altro.iLQRSolver(prob, opts);
 solve!(ilqr);
-plot_traj(states(ilqr), controls(ilqr))
+plot_traj_jan(states(ilqr), controls(ilqr))
 
 
 ################################ OG ################################
@@ -56,20 +56,30 @@ prob2 = Problem(model2, obj2, xf2, tf, x0=x02);
 # initial controls
 initial_controls!(prob2, U0)
 rollout!(prob2);
-# plot_traj(states(prob2), controls(prob2))
+plot_traj(states(prob2), controls(prob2))
 
 # ilqr
 ilqr2 = Altro.iLQRSolver(prob2, opts);
 solve!(ilqr2);
 plot_traj(states(ilqr2), controls(ilqr2))
-plot_angles(states(ilqr2), controls(ilqr2))
-visualize!(model2,states(ilqr2),dt)
+# plot_angles(states(ilqr2), controls(ilqr2))
+# visualize!(model2,states(ilqr2),dt)
+
+extrema.(og_to_jan.(Vector.(states(prob2))) .- states(prob))
+
+p = [1, 2, 3, 7, 8, 9, 13, 14, 15,19, 20, 21, 4, 5, 6,  10, 11, 12, 16, 17, 18, 22, 23, 24]
+# our state x1 q1 x2 q2  v1 w1 v2 w2 
+Aj = ilqr.D[1].A 
+A = ilqr2.D[1].A
+Ape = Aj[:,p]
+A2 = Ape[p,:]
+println(extrema(A-A2))
 
 
 # display(plot(hcat(Vector.(vec.(ilqr.K[1:end-1]))...)',legend=false))
 # display(plot(hcat(Vector.(vec.(ilqr.K[1:end]))...)',legend=false))
-# display(plot(hcat(Vector.(vec.(ilqr.d[1:end]))...)',legend=false))
+display(plot(hcat(Vector.(vec.(ilqr.d[1:end]))...)',legend=false))
 
 # display(plot(hcat(Vector.(vec.(ilqr2.K[1:end-1]))...)',legend=false))
 # display(plot(hcat(Vector.(vec.(ilqr2.K[1:end]))...)',legend=false))
-# display(plot(hcat(Vector.(vec.(ilqr2.d[1:end]))...)',legend=false))
+display(plot(hcat(Vector.(vec.(ilqr2.d[1:end]))...)',legend=false))

@@ -159,7 +159,7 @@ function discrete_jacobian_MC!(::Type{Q}, D, model, z) where Q
     qd = UnitQuaternion{Float64}[]
     ωd = SArray{Tuple{3},Float64,1,3}[]
     Fτd = SArray{Tuple{3},Float64,1,3}[]
-    for (i, body) in enumerate(mech.bodies)
+    for i=1:model.nb
         xinds, vinds, qinds, ωinds = fullargsinds(i)
         push!(xd, x[xinds])
         push!(vd, x[vinds])
@@ -170,7 +170,7 @@ function discrete_jacobian_MC!(::Type{Q}, D, model, z) where Q
         push!(Fτd, u[uinds])
     end
     
-    A, B, C, G = ConstrainedControl.linearsystem(mech, xd, vd, qd, ωd, Fτd, bodyids, eqcids) 
+    A, B, C, G = CC.linearsystem(mech, xd, vd, qd, ωd, Fτd, bodyids, eqcids) 
 
     D.A .= A
     D.B .= B
