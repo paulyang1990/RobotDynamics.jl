@@ -2,7 +2,7 @@ include("QuadVine.jl")
 include("Quad_vis.jl")
 
 # model and timing
-model = QuadVine(1)
+model = QuadVine(3) 
 nq, nv, nc = mc_dims(model)
 n,m = size(model)
 N = 500
@@ -11,16 +11,21 @@ tf = (N-1)*dt
 
 # initial and final conditions
 x0 = [generate_config(model, zeros(model.nb)); zeros(nv)]
-xf = shift_pos(model, x0, [1,0,0])
+shift_pos!(model, x0, [0,0,3.5])
+@assert norm(max_constraints(model, x0)) < 1e-6
+
+xf = [generate_config(model, RotY.([0,.1,.2,.3])); zeros(nv)]
+shift_pos!(model, xf, [.5,0,3])
+@assert norm(max_constraints(model, xf)) < 1e-6
 
 # objective
 Qf = Diagonal(SVector{n}([fill(250., nq); fill(250., nv)]))
 Q = Diagonal(SVector{n}([fill(1e-4, nq); fill(1e-4, nv)]))
 R = Diagonal(@SVector fill(1e-4/dt, m))
-costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=0.0) for i=1:N]
+costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=1e-4) for i=1:N]
 costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=250.0)
 obj = Objective(costfuns);
-  
+
 # problem
 prob = Problem(model, obj, xf, tf, x0=x0);
 

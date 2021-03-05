@@ -37,7 +37,8 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
         new(quadrotor, masses, lengths, radii, inertias, 9.81, nb, 3*(nb-1))
     end 
 end
-QuadVine() = QuadVine{UnitQuaternion{Float64},Float64}(ones(2), [.2, 1], [1,.1], fill(Diagonal(ones(3)),2))
+QuadVine(n) = QuadVine{UnitQuaternion{Float64},Float64}(ones(n+1), [.2; ones(n)], [1;fill(.1,n)], fill(Diagonal(ones(3)),n+1))
+QuadVine() = QuadVine(2)
 
 Altro.config_size(model::QuadVine) = 7*model.nb
 Lie_P(model::QuadVine) = (fill(3, model.nb)..., Int(6*model.nb))
@@ -49,6 +50,20 @@ function trim_controls(model)
     total_mass = sum(model.masses)
     g, kf = model.g, model.quadrotor.kf
     [fill(total_mass*g/(4kf), 4);zeros(m-4)]
+end
+
+function shift_pos!(model::QuadVine{R}, x, shift) where R
+    P = Lie_P(model)
+    for i=1:model.nb
+        inds = RD.vec_inds(R,P,i)
+        x[inds] += shift
+    end
+end
+
+function shift_pos(model::QuadVine{R}, x, shift) where R
+    _x = copy(x)
+    shift_pos!(model,_x, shift)
+    return _x
 end
 
 function max_constraints(model::QuadVine{R}, x) where R
@@ -88,6 +103,57 @@ function max_constraints_jacobian(model::QuadVine, x⁺::Vector{T}) where T
     G = SizedMatrix{n,n̄}(zeros(T,n,n̄))
     RD.state_diff_jacobian!(G, RD.LieState(UnitQuaternion{T}, Lie_P(model)) , SVector{n}(x⁺))
     return J_big*G[1:nq,1:nv]
+end
+
+import RobotZoo: forces, moments
+function RobotZoo.forces(model::RobotZoo.Quadrotor, x, u)
+    q = orientation(model, x)
+    kf = model.kf
+    g = model.gravity
+    m = model.mass
+
+    w1 = u[1]
+    w2 = u[2]
+    w3 = u[3]
+    w4 = u[4]
+
+    # F1 = max(0,kf*w1);
+    # F2 = max(0,kf*w2);
+    # F3 = max(0,kf*w3);
+    # F4 = max(0,kf*w4);
+    F1 = kf*w1;
+    F2 = kf*w2;
+    F3 = kf*w3;
+    F4 = kf*w4;
+    F = @SVector [0., 0., F1+F2+F3+F4] #total rotor force in body frame
+
+    m*g + q*F # forces in world frame
+end
+
+function RobotZoo.moments(model::RobotZoo.Quadrotor, x, u)
+
+    kf, km = model.kf, model.km
+    L = model.motor_dist
+
+    w1 = u[1]
+    w2 = u[2]
+    w3 = u[3]
+    w4 = u[4]
+
+    # F1 = max(0,kf*w1);
+    # F2 = max(0,kf*w2);
+    # F3 = max(0,kf*w3);
+    # F4 = max(0,kf*w4);
+    F1 = kf*w1;
+    F2 = kf*w2;
+    F3 = kf*w3;
+    F4 = kf*w4;
+
+    M1 = km*w1;
+    M2 = km*w2;
+    M3 = km*w3;
+    M4 = km*w4;
+    tau = @SVector [L*(F2-F4), L*(F3-F1), (M1-M2+M3-M4)] #total rotor torque in body frame
 end
 
 function forces(model::QuadVine, x⁺, x, u)
@@ -322,7 +388,7 @@ function generate_config(model, rotations)
     q = zeros(0)   
     l = model.lengths
     for i = 1:model.nb
-        r = UnitQuaternion(rotations[i])
+        r = UnitQuaternion(rotations[i]...)
         delta = r * [0,0,-l[i]/2]
         q = [q; pin+delta; Rotations.params(r)]
         pin += 2*delta
@@ -334,19 +400,6 @@ function generate_config(model, θ::Vector{<:Number})
     rotations = UnitQuaternion.(RotX.(θ))
     return generate_config(model, rotations)
 end
-
-## DYANMICS
-# nb = 3
-# model = QuadVine(nb)
-# nq, nv, nc = mc_dims(model)
-# dt = 0.001
-# θ = [.3, .5, .7]
-# x0 = [generate_config(model, θ); zeros(nv)]
-# u0 = fill(.3, nb)
-# z = KnotPoint(x0, u0, dt)
-# @show norm(max_constraints(model, x0)) 
-# x1 = RD.discrete_dynamics(PassThrough, model, z)
-# x1, λ = discrete_dynamics_MC(PassThrough, model, x0, u0, 0., dt)
 
 ## ROLLOUT
 function quick_rollout(model, x0, u, dt, N)
@@ -390,47 +443,3 @@ function plot_angles(X, U)
     Umat = hcat(Vector.(U)...)'
     display(plot(Umat))
 end
-
-# model = QuadVine()
-# nq, nv, nc = mc_dims(model)
-# n,m = size(model)
-# N = 1000
-# dt = 5e-3
-# θ = zeros(2) #rand(2)
-# x0 = [generate_config(model, θ); zeros(nv)]
-# u0 = [fill(sum(model.masses)*9.81/4, 4);zeros(m-4)]
-
-# X = quick_rollout(model, x0, u0, dt, N)
-# include("nPendulum3D_visualize.jl")
-# visualize!(model, X, dt)
-
-# quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
-# quats2 = [UnitQuaternion(X[i][7 .+ (4:7)]) for i=1:N]
-# angles1 = [rotation_angle(quats1[i])*rotation_axis(quats1[i])[1] for i=1:N]
-# angles2 = [rotation_angle(quats2[i])*rotation_axis(quats2[i])[1] for i=1:N]
-
-# using Plots
-# plot(angles1, label = "θ1",xlabel="time step",ylabel="state")
-# plt = plot!(angles2-angles1,  label = "θ2")
-# display(plt)
-
-## JACOBIAN
-# n,m = size(model)
-# n̄ = RD.state_diff_size(model)
-
-# DExp = TO.DynamicsExpansionMC(model)
-# diff1 = SizedMatrix{n,n̄}(zeros(n,n̄))
-# RD.state_diff_jacobian!(diff1, RD.LieState(model), SVector{n}(x0))
-# diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
-# RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x1))
-# z = KnotPoint(x0,u0,dt)
-# Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
-# TO.save_tmp!(DExp)
-# TO.error_expansion!(DExp, diff1, diff2)
-# A,B,C,G = TO.error_expansion(DExp, model)
-
-# using SparseArrays
-# display(spy(sparse(A), marker=2, legend=nothing, c=palette([:black], 2)))
-# display(spy(sparse(B), marker=2, legend=nothing, c=palette([:black], 2)))
-# display(spy(sparse(C), marker=2, legend=nothing, c=palette([:black], 2)))
-# display(spy(sparse(G), marker=2, legend=nothing, c=palette([:black], 2)))
