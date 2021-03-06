@@ -26,8 +26,15 @@ costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf), SVector{m}(t
 costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=750.0)
 obj = Objective(costfuns);
 
+# constraints
+conSet = ConstraintList(n,m,N)
+bnd = BoundConstraint(n,m, u_min=[fill(0,4);zeros(3)], 
+                            u_max=[fill(Inf,4);zeros(3)])
+add_constraint!(conSet, bnd, 1:N-1)
+add_constraint!(conSet, GoalConstraint(xf), N) 
+
 # problem
-prob = Problem(model, obj, xf, tf, x0=x0);
+prob = Problem(model, obj, xf, tf, x0=x0, constraints=conSet);
 
 # initial controls
 u0 = trim_controls(model)
@@ -37,14 +44,20 @@ rollout!(prob);
 # plot_traj(states(prob), controls(prob))
 # visualize!(model, states(prob), dt)
 
-# ILQR
-opts = SolverOptions(verbose=7, static_bp=0, iterations=1, cost_tolerance=1e-4)
-ilqr = Altro.iLQRSolver(prob, opts);
-set_options!(ilqr, iterations=50, cost_tolerance=1e-4)
-solve!(ilqr);
-X,U = states(ilqr), controls(ilqr)
-plot_traj(states(ilqr), controls(ilqr))
-visualize!(model, states(ilqr), dt)
+# options
+opts = SolverOptions(verbose=7, static_bp=0, 
+        iterations=50, cost_tolerance=1e-4, 
+        cost_tolerance_intermediate=1e-2,
+        constraint_tolerance=1e-1,
+        projected_newton=false)
+
+# solve with Altro
+altro = ALTROSolver(prob, opts);
+set_options!(altro, constraint_tolerance=1e-2)
+solve!(altro);
+X,U = states(altro), controls(altro)
+plot_traj(states(altro), controls(altro))
+visualize!(model, states(altro), dt)
 
 # display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
 # display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
