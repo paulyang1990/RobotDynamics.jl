@@ -254,6 +254,25 @@ function discrete_jacobian_MC!(::Type{Q}, A,B,C, G, model::nPenJanOrth,
     G .= LG
 end
 
+function state_parts(model::nPenJanOrth, x, u)
+    xd = SArray{Tuple{3},Float64,1,3}[]
+    vd = SArray{Tuple{3},Float64,1,3}[]
+    qd = UnitQuaternion{Float64}[]
+    ωd = SArray{Tuple{3},Float64,1,3}[]
+    Fτd = SArray{Tuple{1},Float64,1,1}[]
+    for i=1:model.nb
+        xinds, vinds, qinds, ωinds = fullargsinds(i)
+        push!(xd, x[xinds])
+        push!(vd, x[vinds])
+        push!(qd, UnitQuaternion(x[qinds]...))
+        push!(ωd, x[ωinds])
+
+        uinds = controlinds(i)
+        push!(Fτd, SA[u[uinds]])
+    end
+    return xd, vd, qd, ωd, Fτd
+end
+
 function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::nPenJanOrth, Z::Traj)
     for k in eachindex(D)
         if Z[k].dt == 0
@@ -266,9 +285,9 @@ function TO.dynamics_expansion!(Q, D::Vector{<:TO.DynamicsExpansionMC}, model::n
       end
 end
 
-function TO.error_expansion!(::Vector{<:TO.DynamicsExpansionMC}, ::nPenJanOrth, G)
-	return
-end
+# function TO.error_expansion!(::Vector{<:TO.DynamicsExpansionMC}, ::nPenJanOrth, G)
+# 	return
+# end
 
 function quick_rollout(model, x0, u, dt, N)
     X = [x0]
