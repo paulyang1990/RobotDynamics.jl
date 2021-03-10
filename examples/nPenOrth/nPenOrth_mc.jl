@@ -166,11 +166,13 @@ end
 
 # get x[], q[] from state x v q w, x v q w....
 function get_configs(model::nPenOrthMC, x)
-    nb = model.nb
-    vec = RD.vec_states(model, x) # size nb+1   
-    rot = RD.rot_states(model, x) # size nb 
-    xs = [if i > 1 vec[i][4:6] else vec[i][1:3] end for i=1:nb]
-    qs = [rot[i] for i=1:nb]
+    # nb = model.nb
+    # vec = RD.vec_states(model, x) # size nb+1   
+    # # rot = RD.rot_states(model, x) # size nb 
+    # xs = [if i > 1 vec[i][4:6] else vec[i][1:3] end for i=1:nb]
+    # qs = [rot[i] for i=1:nb]
+    xs = [x[(i-1)*13 .+ (1:3)] for i=1:nb]
+    qs = [x[(i-1)*13 .+ (7:10)] for i=1:nb]
     return xs, qs
 end
 # lie state is not good for getting config and vel...
@@ -187,9 +189,11 @@ end
 # get v[], w[] from state x v q w, x v q w....
 function get_vels(model::nPenOrthMC, x)
     nb = model.nb
-    vec = RD.vec_states(model, x) # size nb+1   
-    vs = [if i > 1 vec[i][7:9] else vec[i][4:6] end for i=1:nb]
-    ωs = [vec[i+1][1:3] for i=1:nb]
+    # vec = RD.vec_states(model, x) # size nb+1   
+    # vs = [if i > 1 vec[i][7:9] else vec[i][4:6] end for i=1:nb]
+    # ωs = [vec[i+1][1:3] for i=1:nb]
+    vs = [x[(i-1)*13 .+ (4:6)] for i=1:nb]
+    ωs = [x[(i-1)*13 .+ (11:13)] for i=1:nb]
     return vs, ωs
 end
 function get_vels_ind(model::nPenOrthMC, x)
@@ -206,9 +210,12 @@ function propagate_config!(model::nPenOrthMC{R}, x⁺::Vector{T}, x, dt) where {
     nb = model.nb
     nq, nv, np = mc_dims(model)
     P = Lie_P(model)
+    lie = RD.LieState(UnitQuaternion{eltype(x)}, P)
 
-    vec = RD.vec_states(model, x)
-    rot = RD.rot_states(model, x)
+    # vec = RD.vec_states(model, x)
+    # rot = RD.rot_states(model, x)
+    vec = RD.vec_states(lie, x) 
+    rot = RD.rot_states(lie, x) 
 
     vs⁺, ωs⁺ = get_vels(model, x⁺)
     for i=1:nb
@@ -231,11 +238,11 @@ end
 function propagate_config(model::nPenOrthMC, x⁺, x, dt)
     x⁺ = copy(x⁺)
     propagate_config!(model, x⁺, x, dt)
-    return x⁺[get_vels_ind(model,x⁺)]
+    return x⁺[get_configs_ind(model,x⁺)]
 end
 
 function f_pos(model::nPenOrthMC, x⁺, x, u, λ, dt)
-    return x⁺[get_vels_ind(model,x⁺)] - propagate_config(model, x⁺, x, dt)
+    return x⁺[get_configs_ind(model,x⁺)] - propagate_config(model, x⁺, x, dt)
 end
 
 function f_vel(model::nPenOrthMC, x⁺, x, u, λ, dt)
@@ -310,7 +317,7 @@ function discrete_dynamics_MC(::Type{Q}, model::nPenOrthMC,
     nq, nv, nc = mc_dims(model)
 
     # initial guess
-    λ = zeros(nc)
+    λ = zeros(eltype(x),nc)
     x⁺ = Vector(x)
 
     x⁺_new, λ_new = copy(x⁺), copy(λ)
@@ -381,11 +388,20 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::nPenOrthMC,
         _x = z[(nq+nv) .+ (1:nq+nv)]
         _u = z[2*(nq+nv) .+ (1:m)]
         _λ = z[2*(nq+nv)+m .+ (1:nc)]
-        return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
+        out_x = zeros(eltype(z),n)
+        out_x[get_configs_ind(model, _x⁺)] = f_pos(model, _x⁺, _x, _u, _λ, dt)
+        out_x[get_vels_ind(model, _x⁺)] = f_vel(model,  _x⁺, _x, _u, _λ, dt)
+        return out_x
     end
 
     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
     ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 
-    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+    # index of q in n̄
+    ind = BitArray(undef, n̄)
+    for i=1:model.nb
+        ind[(i-1)*12 .+ (1:3)] .= 1
+        ind[(i-1)*12 .+ (7:9)] .= 1
+    end
+    G[:,ind] .= max_constraints_jacobian(model, x⁺)
 end
