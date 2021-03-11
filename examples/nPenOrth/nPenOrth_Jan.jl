@@ -59,7 +59,7 @@ function nPenJanOrth(N::Integer)
     constraints = [joint_between_origin_and_link1]
     if N > 1
         # constraints = [constraints; [EqualityConstraint(ConstrainedDynamics.Spherical(links[i], links[i+1]; p1 = p2, p2=-p2)) for i=1:N-1]]
-        constraints = [constraints; [EqualityConstraint(Revolute(links[i], links[i+1], R^i*joint_axis; p1 = p2, p2=-p2)) for i=1:N-1]]
+        constraints = [constraints; [EqualityConstraint(Revolute(links[i], links[i+1], normalize(R^i*joint_axis); p1 = p2, p2=-p2)) for i=1:N-1]]
     end
 
     mech = Mechanism(origin, links, constraints, g=-9.81)
