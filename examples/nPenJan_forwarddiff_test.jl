@@ -74,11 +74,14 @@ function CD.lineardynamics(mechanism::Mechanism{T,Nn,Nb}, eqcids) where {T,Nn,Nb
         parentid = eqc.parentid
         if parentid !== nothing
             col6 = CD.offsetrange(parentid,6)
+            # in nPendulumSpherical we dont apply u to parent body
             Bcontrol[col6,n1:n2] = CD.∂Fτ∂ua(mechanism, eqc, parentid)
         end
         for childid in eqc.childids
             col6 = CD.offsetrange(childid,6)
             Bcontrol[col6,n1:n2] = CD.∂Fτ∂ub(mechanism, eqc, childid)
+            # should this be I
+            # Bcontrol[col6[4:6],n1:n2] = Matrix(I,3,3) 
         end
 
         n1 = n2+1

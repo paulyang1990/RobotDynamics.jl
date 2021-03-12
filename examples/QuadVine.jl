@@ -92,17 +92,49 @@ function Altro.is_converged(model::QuadVine, x)
     return norm(c) < 1e-6
 end
 
-function max_constraints_jacobian(model::QuadVine, x⁺::Vector{T}) where T
-    nq, nv, _ = mc_dims(model)
-    c_aug(x) = max_constraints(model, x)
-    J_big = ForwardDiff.jacobian(c_aug, x⁺[1:nq])
+# function max_constraints_jacobian(model::QuadVine, x⁺::Vector{T}) where T
+#     nq, nv, _ = mc_dims(model)
+#     c_aug(x) = max_constraints(model, x)
+#     J_big = ForwardDiff.jacobian(c_aug, x⁺[1:nq])
 
-    links = length(model.masses)
-    n,m = size(model)
-    n̄ = state_diff_size(model)
-    G = SizedMatrix{n,n̄}(zeros(T,n,n̄))
-    RD.state_diff_jacobian!(G, RD.LieState(UnitQuaternion{T}, Lie_P(model)) , SVector{n}(x⁺))
-    return J_big*G[1:nq,1:nv]
+#     links = length(model.masses)
+#     n,m = size(model)
+#     n̄ = state_diff_size(model)
+#     G = SizedMatrix{n,n̄}(zeros(T,n,n̄))
+#     RD.state_diff_jacobian!(G, RD.LieState(UnitQuaternion{T}, Lie_P(model)) , SVector{n}(x⁺))
+#     return J_big*G[1:nq,1:nv]
+# end
+
+function max_constraints_jacobian(model::QuadVine{R}, x) where R
+    T = eltype(x)
+    nb = model.nb
+    nq, nv, _ = mc_dims(model)
+    P = Lie_P(model)
+    l = model.lengths
+    d = zeros(T, 3)
+    rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x)
+    J = zeros(T, nc, nv)
+    for i=1:nb-1
+        # shift vals
+        row = 3*(i-1)
+        col = 6*(i-1)
+
+        # ∂c∂qa
+        qa = rot[i]
+        d[3] = -l[i]/2
+        J[row .+ (1:3), col .+ (4:6)] = RS.∇rotate(qa, d)*RS.∇differential(qa)
+
+        # ∂c∂qb
+        qb = rot[i+1]
+        d[3] = -l[i+1]/2
+        J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qa)
+        
+        for j=1:3
+            J[row+j, col+j] = 1 # ∂c∂xa = I
+            J[row+j, col+6+j] = -1 # ∂c∂xb = -I
+        end
+    end
+    return J
 end
 
 import RobotZoo: forces, moments
@@ -351,8 +383,10 @@ function RD.discrete_dynamics(::Type{Q}, model::QuadVine, x, u, t, dt) where Q
     return x
 end
 
-function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::QuadVine,
+function old_discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
     z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+    
+    all_partials, ∇f, G = Dexp.all_partials, Dexp.∇f, Dexp.G
 
     n,m = size(model)
     n̄ = state_diff_size(model)
@@ -376,6 +410,57 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::QuadVine,
     end
 
     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
+    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+
+    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+end
+
+function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
+    z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+    
+    all_partials, ∇f, G = Dexp.all_partials, Dexp.∇f, Dexp.G
+
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    nq, nv, nc = mc_dims(model)
+
+    x = state(z) 
+    u = control(z)
+    dt = z.dt
+    @assert dt != 0
+
+    # compute next state and lagrange multiplier
+    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, dt)
+
+    # top half of all partials
+    # d(f_pos)d(x⁺)
+    all_partials[diagind(all_partials)[1:nq]] .= 1
+
+    # d(f_pos)d([vel⁺; pos])
+    tmp_zeros = zeros(nv)
+    function prop_config_aug(z) 
+        # Unpack
+        _x⁺ = [x⁺[1:nq];z[1:nv]]
+        _x = [z[nv .+ (1:nq)];tmp_zeros]
+        return -1*propagate_config(model, _x⁺, _x, dt)
+    end
+    f_pos_view = view(all_partials, 1:nq, nq .+ (1:n))
+    vel⁺ = x⁺[nq .+ (1:nv)]
+    pos = x[1:nq]
+    ForwardDiff.jacobian!(f_pos_view, prop_config_aug, [vel⁺; pos])
+
+    # bottom half of all_partials
+    function f_vel_aug(z)
+        # Unpack
+        _x⁺ = z[1:(nq+nv)]
+        _x = z[(nq+nv) .+ (1:nq+nv)]
+        _u = z[2*(nq+nv) .+ (1:m)]
+        _λ = z[2*(nq+nv)+m .+ (1:nc)]
+        return f_vel(model,  _x⁺, _x, _u, _λ, dt)
+    end
+    f_vel_view = view(all_partials, nq .+ (1:nv), 1:(2n+m+nc))
+    ForwardDiff.jacobian!(f_vel_view, f_vel_aug, [x⁺;x;u;λ])
+
     ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 
     G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)

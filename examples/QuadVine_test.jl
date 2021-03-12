@@ -1,7 +1,7 @@
 include("QuadVine.jl")
 include("Quad_vis.jl")
 
-model = QuadVine(2)
+model = QuadVine(3)
 nq, nv, nc = mc_dims(model)
 n,m = size(model)
 N = 2
@@ -9,7 +9,8 @@ dt = 5e-3
 x0 = [generate_config(model, zeros(model.nb)); zeros(nv)]
 u0 = trim_controls(model)
 
-X = quick_rollout(model, x0, u0, dt, N)
+# ROLLOUT
+# X = quick_rollout(model, x0, u0, dt, N)
 # visualize!(model, X, dt)
 
 # quats1 = [UnitQuaternion(X[i][4:7]) for i=1:N]
@@ -46,7 +47,7 @@ RD.state_diff_jacobian!(diff1, RD.LieState(model), SVector{n}(x0))
 diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
 RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x0))
 z = KnotPoint(x0,u0,dt)
-Altro.discrete_jacobian_MC!(PassThrough, DExp.∇f, DExp.G, model, z)
+Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z)
 TO.save_tmp!(DExp)
 TO.error_expansion!(DExp, diff1, diff2)
 A,B,C,G = TO.error_expansion(DExp, model)

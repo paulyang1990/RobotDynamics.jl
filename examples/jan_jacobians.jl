@@ -1,5 +1,5 @@
 using Rotations
-using ForwardDiff
+using ForwardDiff, FiniteDiff
 using StaticArrays, LinearAlgebra
 using BenchmarkTools
 using Plots
@@ -41,23 +41,81 @@ constraints = [socket0to1;socket1to2]
 mech = Mechanism(origin, links, constraints)
 mech.Δt = 1e-7
 
-## Jacobians
+CD.settempvars!(getbody(mech, 1), [0,0,.5], zeros(3), zeros(3), UnitQuaternion(RotX(pi)), zeros(3), zeros(3), zeros(6))
+CD.settempvars!(getbody(mech, 2), [0,0,1.5], zeros(3), zeros(3), UnitQuaternion(RotX(pi)), zeros(3), zeros(3), zeros(6))
 
-# ∂Fτ∂ub
+## B Jacobians
+# spherical 1
+# id = 3
+# eqc = CD.geteqconstraint(mech, id)
+# childid=1
+# CD.∂Fτ∂ub(mech, eqc, childid) # this one seems weird
+
+# joint = eqc.constraints[1] # translational
+# vertices = joint.vertices
+# xb = [0,0,.5]
+# qb = UnitQuaternion(RotX(pi))
+# Bτb = CD.VLᵀmat(qb) * CD.RVᵀmat(qb) * CD.skew(vertices[2])
+
+# # spherical 2
+# id = 4
+# eqc = CD.geteqconstraint(mech, id)
+# parentid=1
+# childid=2
+# CD.∂Fτ∂ua(mech, eqc, parentid)
+# CD.∂Fτ∂ub(mech, eqc, childid)
+
+## G Jacobians
+
+# spherical 1
 id = 3
+childid = 1
 eqc = CD.geteqconstraint(mech, id)
-chunk = CD.∂Fτ∂ub(mech, eqc, 1)
-
-# ∂g dconfig
-joint = eqc.constraints[1]
+joint = eqc.constraints[1] # translational
 xb = [0,0,.5]
 qb = UnitQuaternion(RotX(pi))
 max_cons = CD.g(joint, xb, qb) # constraint equation
 
 g_aug(x) = CD.g(joint, x[1:3], UnitQuaternion(x[4:7]...))
-G = ForwardDiff.jacobian(g_aug, [xb...;RS.params(qb)]) # automated jacobian
+G = FiniteDiff.finite_difference_jacobian(g_aug, [xb...;RS.params(qb)]) # automated jacobian
 
 part1, part2 = CD.∂g∂posb(joint, xb, qb) # handmade jacobian
 handmade = [part1 part2]
 
 extrema(G-handmade) # one element is off?
+
+# extra1 = CD.Rmat(CD.ωbar(cstate.ωsol[2],mech.Δt)*mech.Δt/2)*CD.LVᵀmat(cstate.qsol[2])
+# extra2 = CD.Lmat(cstate.qsol[2])*CD.derivωbar(cstate.ωsol[2],mech.Δt)*mech.Δt/2
+# ccol3c12 = CD.offsetrange(childid,3,12,3)
+# ccol3d12 = CD.offsetrange(childid,3,12,4)
+
+# spherical 2
+# for the second spherical joint, need to look into dgdx and dgdq
+# id = 4
+# eqc = CD.geteqconstraint(mech, id)
+# joint = eqc.constraints[1] # translational
+# xa = [0,0,.5]
+# qa = UnitQuaternion(RotX(pi))
+# xb = [0,0,1.5]
+# qb = UnitQuaternion(RotX(pi))
+# max_cons = CD.g(joint, xa, qa, xb, qb) # constraint equation
+
+# pXl, pQl = CD.∂g∂posa(joint, xa, qa, xb, qb) # handmade jacobian
+# cXl, cQl = CD.∂g∂posb(joint, xa, qa, xb, qb) # handmade jacobian
+# handmade = [pXl pQl cXl cQl]
+
+# pstate = mech.bodies[1].state
+# cstate = mech.bodies[2].state
+# extra1 = CD.Rmat(CD.ωbar(cstate.ωsol[2],mech.Δt)*mech.Δt/2)*CD.LVᵀmat(qa)
+# extra2 = CD.Rmat(CD.ωbar(pstate.ωsol[2],mech.Δt)*mech.Δt/2)*CD.LVᵀmat(qb)
+# cQl*extra2
+
+# RS.∇differential(UnitQuaternion(RotX(pi))) ≈ extra1
+# pQl*extra1 ≈ Gj[4:6,7:9]
+
+# G2[4:6,7:9]
+
+# g_aug(x) = CD.g(joint, x[1:3], UnitQuaternion(x[4:7]...), x[8:10], UnitQuaternion(x[11:14]...))
+# G = ForwardDiff.jacobian(g_aug, [xa...;RS.params(qa);xb...;RS.params(qb)]) # automated jacobian
+
+# extrema(G-handmade) # two elements are off?
