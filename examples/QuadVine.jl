@@ -327,7 +327,7 @@ end
 #     Δs .= γ*Δs
 # end
 
-function discrete_dynamics_MC(::Type{Q}, model::QuadVine, 
+function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine, 
     x, u, t, dt) where {Q<:RobotDynamics.Explicit}
   
     nq, nv, nc = mc_dims(model)
@@ -379,44 +379,44 @@ function discrete_dynamics_MC(::Type{Q}, model::QuadVine,
 end
 
 function RD.discrete_dynamics(::Type{Q}, model::QuadVine, x, u, t, dt) where Q
-    x, λ = discrete_dynamics_MC(Q, model,  x, u, t, dt)
+    x, λ = Altro.discrete_dynamics_MC(Q, model,  x, u, t, dt)
     return x
 end
 
-function old_discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
-    z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+# function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
+#     z::AbstractKnotPoint{T,N,M′}, x⁺, λ) where {T,N,M′,Q<:RobotDynamics.Explicit}
     
-    all_partials, ∇f, G = Dexp.all_partials, Dexp.∇f, Dexp.G
+#     all_partials, ∇f, G = Dexp.all_partials, Dexp.∇f, Dexp.G
 
-    n,m = size(model)
-    n̄ = state_diff_size(model)
-    nq, nv, nc = mc_dims(model)
+#     n,m = size(model)
+#     n̄ = state_diff_size(model)
+#     nq, nv, nc = mc_dims(model)
 
-    x = state(z) 
-    u = control(z)
-    dt = z.dt
-    @assert dt != 0
+#     x = state(z) 
+#     u = control(z)
+#     dt = z.dt
+#     @assert dt != 0
 
-    # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, dt)
+#     # compute next state and lagrange multiplier
+#     x⁺, λ = Altro.discrete_dynamics_MC(Q, model, x, u, z.t, dt)
 
-    function f_imp(z)
-        # Unpack
-        _x⁺ = z[1:(nq+nv)]
-        _x = z[(nq+nv) .+ (1:nq+nv)]
-        _u = z[2*(nq+nv) .+ (1:m)]
-        _λ = z[2*(nq+nv)+m .+ (1:nc)]
-        return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
-    end
+#     function f_imp(z)
+#         # Unpack
+#         _x⁺ = z[1:(nq+nv)]
+#         _x = z[(nq+nv) .+ (1:nq+nv)]
+#         _u = z[2*(nq+nv) .+ (1:m)]
+#         _λ = z[2*(nq+nv)+m .+ (1:nc)]
+#         return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
+#     end
 
-    all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
-    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+#     all_partials = ForwardDiff.jacobian(f_imp, [x⁺;x;u;λ])
+#     ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 
-    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
-end
+#     G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+# end
 
 function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
-    z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+    z::AbstractKnotPoint{T,N,M′}, x⁺, λ) where {T,N,M′,Q<:RobotDynamics.Explicit}
     
     all_partials, ∇f, G = Dexp.all_partials, Dexp.∇f, Dexp.G
 
@@ -430,7 +430,7 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
     @assert dt != 0
 
     # compute next state and lagrange multiplier
-    x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, dt)
+    # x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, dt)
 
     # top half of all partials
     # d(f_pos)d(x⁺)

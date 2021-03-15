@@ -1,24 +1,20 @@
-# still too slow
-
 include("QuadVine.jl")
-# include("Quad_vis.jl")
+include("Quad_vis.jl")
 
 # model and timing
 model = QuadVine(2) 
 nq, nv, nc = mc_dims(model)
 n,m = size(model)
-N = 5
+N = 500
 dt = 5e-3
 tf = (N-1)*dt     
 
 # initial and final conditions
 x0 = [generate_config(model, zeros(model.nb)); zeros(nv)]
-# shift_pos!(model, x0, [0,0,3.5])
-# @assert norm(max_constraints(model, x0)) < 1e-6
+@assert norm(max_constraints(model, x0)) < 1e-6
 
 xf = [generate_config(model, RotY.([0,.1,.2])); zeros(nv)]
-# shift_pos!(model, xf, [.5,0,3])
-# @assert norm(max_constraints(model, xf)) < 1e-6
+@assert norm(max_constraints(model, xf)) < 1e-6
 
 # objective
 Qf = Diagonal(SVector{n}([fill(250., nq); fill(250., nv)]))
@@ -40,13 +36,21 @@ plot_traj(states(prob), controls(prob))
 # visualize!(model, states(prob), dt)
 
 # ILQR
-opts = SolverOptions(verbose=7, static_bp=0, iterations=1, cost_tolerance=1e-4)
+# using TimerOutputs
+# TimerOutputs.enable_debug_timings(Altro)
+opts = SolverOptions(verbose=7, static_bp=0, iterations=3, cost_tolerance=1e-4)
 ilqr = Altro.iLQRSolver(prob, opts);
-# set_options!(ilqr, iterations=50, cost_tolerance=1e-6)
-solve!(ilqr);
-X,U = states(ilqr), controls(ilqr)
-plot_traj(states(ilqr), controls(ilqr))
-# visualize!(model, states(ilqr), dt)
+# set_options!(ilqr, iterations=50, cost_tolerance=1e-4)
 
-# display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
-# display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
+# solve
+# reset_timer!(ilqr.stats.to)
+solve!(ilqr);
+# show(ilqr.stats.to)
+
+# results
+# X,U = states(ilqr), controls(ilqr)
+plot_traj(states(ilqr), controls(ilqr))
+visualize!(model, states(ilqr), dt)
+
+# # display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
+# # display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))

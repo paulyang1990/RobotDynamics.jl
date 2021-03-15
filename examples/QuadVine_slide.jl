@@ -33,10 +33,18 @@ rollout!(prob);
 # visualize!(model, states(prob), dt)
 
 # ILQR
-opts = SolverOptions(verbose=7, static_bp=0, iterations=1, cost_tolerance=1e-4)
+opts = SolverOptions(verbose=7, static_bp=0, iterations=2, cost_tolerance=1e-4)
 ilqr = Altro.iLQRSolver(prob, opts);
 # set_options!(ilqr, iterations=50, cost_tolerance=1e-6)
+
+# solve
+# using TimerOutputs
+# TimerOutputs.enable_debug_timings(Altro)
+# reset_timer!(ilqr.stats.to)
 solve!(ilqr);
+# show(ilqr.stats.to)
+
+# results
 X,U = states(ilqr), controls(ilqr)
 plot_traj(states(ilqr), controls(ilqr))
 visualize!(model, states(ilqr), dt)

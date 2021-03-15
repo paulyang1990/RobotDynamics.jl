@@ -1,6 +1,6 @@
 include("QuadVine.jl")
 
-model = QuadVine(3)
+model = QuadVine(2)
 nq, nv, nc = mc_dims(model)
 n,m = size(model)
 n̄ = RD.state_diff_size(model)
@@ -12,25 +12,31 @@ xf = copy(x0)
 x⁺ = copy(x0)
 u0 = trim_controls(model)
 z = KnotPoint(x0,u0,dt)
+@time Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
+x⁺, λ = Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
 
 #################################################################
 # NEW ABC JACOBIAN
 
 DExp = TO.DynamicsExpansionMC(model)
-Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z)
-# res1 = @benchmark Altro.discrete_jacobian_MC!(PassThrough, $DExp, $model, $z)
+Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z, x⁺, λ)
 
 DExp2 = TO.DynamicsExpansionMC(model)
 old_discrete_jacobian_MC!(PassThrough, $DExp2, $model, $z)
 DExp.∇f ≈ DExp2.∇f
 
-# using StatProfilerHTML
-# @profilehtml begin
-#     for i = 1:20
-#         Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z)
-#     end
-# end
- 
+@benchmark Altro.discrete_dynamics_MC(PassThrough, $model, $x0, $u0, 0, $dt)
+@benchmark Altro.discrete_jacobian_MC!(PassThrough, $DExp, $model, $z, $x⁺, $λ)
+
+using StatProfilerHTML
+@profilehtml begin
+    for i = 1:20
+        # Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
+        Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z, x⁺, λ)
+    end
+end
+@profilehtml TO.dynamics_expansion!(PassThrough, ilqr.D, model, ilqr.Z, ilqr.Λ)
+
 #################################################################
 # ALL_PARTIALS
 # x = copy(x0)
