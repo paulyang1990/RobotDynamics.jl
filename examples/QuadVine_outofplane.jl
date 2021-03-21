@@ -11,18 +11,17 @@ tf = (N-1)*dt
 
 # initial and final conditions
 x0 = [generate_config(model, zeros(model.nb)); zeros(nv)]
+shift_pos!(model, x0, [0,0,0])
 @assert norm(max_constraints(model, x0)) < 1e-6
 
-xf = [generate_config(model, RotY.([0,pi/4,pi/2])); zeros(nv)]
+xf = [generate_config(model, RotX.([0, -.4, -.8])); zeros(nv)]
+shift_pos!(model, xf, [.5,.5,0])
 @assert norm(max_constraints(model, xf)) < 1e-6
 
 # objective
 Qf = Diagonal(SVector{n}([fill(250., nq); fill(250., nv)]))
-# reach
-Q = Diagonal(SVector{n}([100;100;100;fill(1e-4, nq-3); fill(1e-4, nv)]))
-# swing
 Q = Diagonal(SVector{n}([fill(1e-4, nq); fill(1e-4, nv)]))
-R = Diagonal(@SVector fill(1e-4/dt, m))
+R = Diagonal(@SVector fill(2e-2/dt, m))
 costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=1e-4) for i=1:N]
 costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=250.0)
 obj = Objective(costfuns);
@@ -43,7 +42,7 @@ plot_traj(states(prob), controls(prob))
 # TimerOutputs.enable_debug_timings(Altro)
 opts = SolverOptions(verbose=7, static_bp=0, iterations=3, cost_tolerance=1e-4)
 ilqr = Altro.iLQRSolver(prob, opts);
-# set_options!(ilqr, iterations=50, cost_tolerance=1e-4)
+set_options!(ilqr, iterations=10, cost_tolerance=1e-6)
 
 # solve
 # reset_timer!(ilqr.stats.to)
