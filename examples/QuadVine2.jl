@@ -414,6 +414,56 @@ end
 #     G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
 # end
 
+function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)    
+    nb = model.nb
+    nq, nv, nc = mc_dims(model)
+
+    ms = model.masses
+    Is = model.inertias
+
+    vs, ωs = get_vels(model, x)
+    vs⁺, ωs⁺ = get_vels(model, x⁺)
+
+    fs = forces(model,x⁺,x,u) 
+    τs = torques(model,x⁺,x,u)
+
+    f_vel_aug(_x⁺) = -max_constraints_jacobian(model, _x⁺)'*λ
+    a_p[nq .+ (1:nv),1:nq] = ForwardDiff.jacobian(f_vel_aug, x⁺[1:nq])
+
+    for i=1:nb
+        r_shift = nq + 6*(i-1)
+
+        # df_vel/dv⁺ = m/dt*I
+        c_shift = 6*(i-1) + nq
+        a_p[r_shift+1, c_shift+1] = a_p[r_shift+2, c_shift+2] = a_p[r_shift+3, c_shift+3] = ms[i]/dt
+
+        # df_vel/dv = -m/dt*I
+        c_shift = 6*(i-1) + n + nq
+        a_p[r_shift+1, c_shift+1] = a_p[r_shift+2, c_shift+2] = a_p[r_shift+3, c_shift+3] = -ms[i]/dt
+
+        # df_vel/dw⁺ 
+        f_vel1_aug(_ω⁺) = sqrt(4/dt^2-_ω⁺'_ω⁺)*Is[i]*_ω⁺ + cross(_ω⁺,Is[i]*_ω⁺) 
+        c_shift = 6*(i-1) + nq
+        a_p[r_shift .+ (4:6), c_shift .+ (4:6)] = ForwardDiff.jacobian(f_vel1_aug, ωs⁺[i])
+
+        # df_vel/dw 
+        f_vel2_aug(_ω) = - sqrt(4/dt^2-_ω'_ω)*Is[i]*_ω  + cross(_ω,Is[i]*_ω)
+        c_shift = 6*(i-1) + n + nq
+        a_p[r_shift .+ (4:6), c_shift .+ (4:6)] = ForwardDiff.jacobian(f_vel2_aug, ωs[i])
+
+        # df_vel/du
+        if i == 1 # drone
+            fτ_aug(z) = [-1*RobotZoo.forces(model.quadrotor, z[1:7], z[8:11]); 
+                        -2*RobotZoo.moments(model.quadrotor, z[1:7], z[8:11])]
+            jac = ForwardDiff.jacobian(fτ_aug, [x[1:7]; u[1:4]])
+            a_p[r_shift .+ (1:6), n .+ (1:7)] = jac[1:6, 1:7] # df_dx
+            a_p[r_shift .+ (1:6), 2n .+ (1:4)] = jac[1:6, 8:11] # df_du
+        else # vine
+            a_p[r_shift .+ (4:6), 2n .+ (5:7)] = -2*Matrix(I,3,3) 
+        end
+    end
+end
+
 function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
     z::AbstractKnotPoint{T,N,M′}, x⁺, λ) where {T,N,M′,Q<:RobotDynamics.Explicit}
     
@@ -449,20 +499,25 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
     ForwardDiff.jacobian!(f_pos_view, prop_config_aug, [vel⁺; pos])
 
     # bottom half of all_partials
-    function f_vel_aug(z)
-        # Unpack
-        _x⁺ = z[1:(nq+nv)]
-        _x = z[(nq+nv) .+ (1:nq+nv)]
-        _u = z[2*(nq+nv) .+ (1:m)]
-        _λ = z[2*(nq+nv)+m .+ (1:nc)]
-        return f_vel(model,  _x⁺, _x, _u, _λ, dt)
-    end
-    f_vel_view = view(all_partials, nq .+ (1:nv), 1:(2n+m+nc))
-    ForwardDiff.jacobian!(f_vel_view, f_vel_aug, [x⁺;x;u;λ])
-
-    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+    # function f_vel_aug(z)
+    #     # Unpack
+    #     _x⁺ = z[1:(nq+nv)]
+    #     _x = z[(nq+nv) .+ (1:nq+nv)]
+    #     _u = z[2*(nq+nv) .+ (1:m)]
+    #     _λ = z[2*(nq+nv)+m .+ (1:nc)]
+    #     return f_vel(model,  _x⁺, _x, _u, _λ, dt)
+    # end
+    # f_vel_view = view(all_partials, nq .+ (1:nv), 1:(2n+m+nc))
+    # ForwardDiff.jacobian!(f_vel_view, f_vel_aug, [x⁺;x;u;λ])
 
     G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+
+    # bottom half of all_partials
+    f_vel_jacobian!(model, all_partials, x⁺, x, u, λ, dt) 
+    all_partials[nq .+ (1:nv), (2n+m) .+ (1:nc)] = -G[:, 1:nv]'
+
+    # implicit function theorem
+    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 end
 
 # compute maximal coordinate configuration given body rotations

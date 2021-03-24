@@ -1,4 +1,4 @@
-include("QuadVine.jl")
+include("QuadVine2.jl")
 
 model = QuadVine(2)
 nq, nv, nc = mc_dims(model)
@@ -12,30 +12,35 @@ xf = copy(x0)
 x⁺ = copy(x0)
 u0 = trim_controls(model)
 z = KnotPoint(x0,u0,dt)
-@time Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
+# @time Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
 x⁺, λ = Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
 
 #################################################################
 # NEW ABC JACOBIAN
-
 DExp = TO.DynamicsExpansionMC(model)
 Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z, x⁺, λ)
 
-DExp2 = TO.DynamicsExpansionMC(model)
-old_discrete_jacobian_MC!(PassThrough, $DExp2, $model, $z)
-DExp.∇f ≈ DExp2.∇f
+∇f = zeros(n, 2n+m+nc)
+∇f[1:nq,:] = DExp.all_partials[1:nq,:]
+f_vel_jacobian!(model, ∇f, x⁺, x0, u0, λ, dt) 
+∇f[nq .+ (1:nv), (2n+m) .+ (1:nc)] = -DExp.G[:, 1:nv]'
+∇f ≈ DExp.all_partials
 
-@benchmark Altro.discrete_dynamics_MC(PassThrough, $model, $x0, $u0, 0, $dt)
-@benchmark Altro.discrete_jacobian_MC!(PassThrough, $DExp, $model, $z, $x⁺, $λ)
+# DExp2 = TO.DynamicsExpansionMC(model)
+# old_discrete_jacobian_MC!(PassThrough, $DExp2, $model, $z)
+# DExp.∇f ≈ DExp2.∇f
 
-using StatProfilerHTML
-@profilehtml begin
-    for i = 1:20
-        # Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
-        Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z, x⁺, λ)
-    end
-end
-@profilehtml TO.dynamics_expansion!(PassThrough, ilqr.D, model, ilqr.Z, ilqr.Λ)
+# @benchmark Altro.discrete_dynamics_MC(PassThrough, $model, $x0, $u0, 0, $dt)
+# @benchmark Altro.discrete_jacobian_MC!(PassThrough, $DExp, $model, $z, $x⁺, $λ)
+
+# using StatProfilerHTML
+# @profilehtml begin
+#     for i = 1:20
+#         # Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0, dt)
+#         Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z, x⁺, λ)
+#     end
+# end
+# @profilehtml TO.dynamics_expansion!(PassThrough, ilqr.D, model, ilqr.Z, ilqr.Λ)
 
 #################################################################
 # ALL_PARTIALS
@@ -59,39 +64,40 @@ end
 
 #################################################################
 # NEW G JACOBIAN
-function max_constraints_jacobian2(model::QuadVine{R}, x) where R
-    nb = model.nb
-    nq, nv, _ = mc_dims(model)
-    P = Lie_P(model)
-    l = model.lengths
-    d = zeros(3)
-    rot = RD.rot_states(RD.LieState(UnitQuaternion{eltype(x)}, Lie_P(model)), x)
-    J = zeros(nc, nv)
-    for i=1:nb-1
-        # shift vals
-        row = 3*(i-1)
-        col = 6*(i-1)
+# function max_constraints_jacobian2(model::QuadVine{R}, x) where R
+#     nb = model.nb
+#     nq, nv, _ = mc_dims(model)
+#     P = Lie_P(model)
+#     l = model.lengths
+#     d = zeros(3)
+#     rot = RD.rot_states(RD.LieState(UnitQuaternion{eltype(x)}, Lie_P(model)), x)
+#     J = zeros(nc, nv)
+#     for i=1:nb-1
+#         # shift vals
+#         row = 3*(i-1)
+#         col = 6*(i-1)
 
-        # ∂c∂qa
-        qa = rot[i]
-        d[3] = -l[i]/2
-        J[row .+ (1:3), col .+ (4:6)] = RS.∇rotate(qa, d)*RS.∇differential(qa)
+#         # ∂c∂qa
+#         qa = rot[i]
+#         d[3] = -l[i]/2
+#         J[row .+ (1:3), col .+ (4:6)] = RS.∇rotate(qa, d)*RS.∇differential(qa)
 
-        # ∂c∂qb
-        qb = rot[i+1]
-        d[3] = -l[i+1]/2
-        J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qa)
+#         # ∂c∂qb
+#         qb = rot[i+1]
+#         d[3] = -l[i+1]/2
+#         J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qa)
         
-        for j=1:3
-            J[row+j, col+j] = 1 # ∂c∂xa = I
-            J[row+j, col+6+j] = -1 # ∂c∂xb = -I
-        end
-    end
-    return J
-end
+#         for j=1:3
+#             J[row+j, col+j] = 1 # ∂c∂xa = I
+#             J[row+j, col+6+j] = -1 # ∂c∂xb = -I
+#         end
+#     end
+#     return J
+# end
 
-J = max_constraints_jacobian(model, x⁺)
-J2 = max_constraints_jacobian2(model, x⁺)
+# J = max_constraints_jacobian(model, x⁺)
+# J2 = max_constraints_jacobian2(model, x⁺)
 
-@benchmark max_constraints_jacobian($model, $x⁺)
-@benchmark max_constraints_jacobian2($model, $x⁺)
+# @benchmark max_constraints_jacobian($model, $x⁺)
+# @benchmark max_constraints_jacobian2($model, $x⁺)
+
