@@ -27,6 +27,8 @@ obj = Objective(costfuns);
 prob = Problem(model, obj, xf, tf, x0=x0);
 
 # initial controls
+u0 = trim_controls(model)
+U0 = [SVector{m}(u0) for k = 1:N-1]
 initial_controls!(prob, U0)
 rollout!(prob);
 # plot_traj(states(prob), controls(prob))

@@ -77,5 +77,7 @@ function visualize!(m, Z, Δt)
     end
 
     setanimation!(vis, anim)
+
+    return vis
 end
 
