@@ -18,7 +18,7 @@ xw = shift_pos(model, x0, [1.5,1.5,0])
 @assert norm(max_constraints(model, xw)) < 1e-6
 
 # position constraints
-x_min=[fill(-Inf,nq-5); 0; fill(-Inf,4+nv)]
+x_min=[fill(-Inf,nq-5); 0.5; fill(-Inf,4+nv)]
 @assert all(x_min <= x0)
 @assert all(x_min <= xw)
 
@@ -28,12 +28,12 @@ x_max=[.8; .8; fill(Inf,n-2)]
 
 # objective
 Qf = Diagonal(SVector{n}([fill(250., nq); fill(250., nv)]))
-Qw = Diagonal(SVector{n}([fill(1e-4/dt, nq-7); fill(250/dt, 7); fill(250/dt, nv)]))
+Qw = Diagonal(SVector{n}([fill(1e-4/dt, nq-7); fill(150/dt, 7); fill(150/dt, nv)]))
 Q = Diagonal(SVector{n}([fill(1e-4/dt, nq); fill(1e-4/dt, nv)]))
-R = Diagonal(@SVector fill(1e-4/dt, m))
+R = Diagonal(@SVector fill(1e-2/dt, m))
 costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(x0), SVector{m}(trim_controls(model)); w=1e-4) for i=1:N]
 costfuns[round(Int, N/2)] = TO.LieLQRCost(RD.LieState(model), Qw, R, SVector{n}(xw), SVector{m}(trim_controls(model)); w=1e-4)
-costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(x0), SVector{m}(trim_controls(model)); w=100.0)
+costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(x0), SVector{m}(trim_controls(model)); w=300.0)
 obj = Objective(costfuns);
 
 # constraints
@@ -57,7 +57,7 @@ rollout!(prob);
 # options
 opts = SolverOptions(verbose=7, static_bp=0, 
         iterations=5, cost_tolerance=1e-3, 
-        cost_tolerance_intermediate=1e-3,
+        cost_tolerance_intermediate=1e-2,
         constraint_tolerance=1e-3,
         projected_newton=false)
 
@@ -66,8 +66,14 @@ altro = ALTROSolver(prob, opts);
 set_options!(altro, iterations=15, 
             cost_tolerance=1e-4, constraint_tolerance=1e-3)
 solve!(altro);
+
+# plots
 X,U = states(altro), controls(altro)
-plot_traj(states(altro), controls(altro))
+display(plot([x[1] for x in X],xlabel="timestep",ylabel="drone x position"))
+display(plot([x[nq-4] for x in X],xlabel="timestep",ylabel="ee z position"))
+display(plot(hcat(Vector.(U)...)',xlabel="timestep",ylabel="controls"))
+
+# animations
 vis = visualize!(model, states(altro), dt)
 goal_p = GeometryBasics.Point(SVector{3}(xw[nq-7 .+ (1:3)]))
 goal = GeometryBasics.HyperSphere{3,Float64}(goal_p, .3)
