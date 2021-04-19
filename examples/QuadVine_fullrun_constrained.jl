@@ -1,6 +1,8 @@
 include("QuadVine.jl")
 include("Quad_vis.jl")
 
+# saved results: @load "quadvine_constrained_fullrun.jld2" X U
+
 # model and timing
 model = QuadVine(2) 
 nq, nv, nc = mc_dims(model)
@@ -77,9 +79,20 @@ display(plot(hcat(Vector.(U)...)',xlabel="timestep",ylabel="controls"))
 vis = visualize!(model, states(altro), dt)
 goal_p = GeometryBasics.Point(SVector{3}(xw[nq-7 .+ (1:3)]))
 goal = GeometryBasics.HyperSphere{3,Float64}(goal_p, .3)
-setobject!(vis["goal"], goal, MeshPhongMaterial(color=RGBA(1,0,0, .5)))
+setobject!(vis["goal"], goal, MeshPhongMaterial(color=RGBA(1,0,1, .5)))
 xlim = GeometryBasics.Rect{3,Float64}(Vec(-3.0, -3.0, 0.0), Vec(3+x_max[1], 3+x_max[2], 3.0))
 setobject!(vis["dronespace"], xlim, MeshPhongMaterial(color=RGBA(0,1,0, .3)))
 
 # display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
 # display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
+
+# overlay waypoints 
+vis = Visualizer()
+# waypoints!(vis, prob, inds=collect(1:60:500),color=HSL(colorant"green"), color_end=HSL(colorant"red"));
+waypoints!(vis, prob, inds=collect(1:60:500),color=RGBA(.2,.2,.2,.1), color_end=RGBA(.2,.2,.2,1));
+# waypoints!(vis, prob, inds=collect(1:60:500),color=RGBA(.2,1,.2,.1), color_end=RGBA(1,.2,.2,1));
+render(vis)
+
+xlim = GeometryBasics.Rect{3,Float64}(Vec(-1.0, -2.5, 0.0), Vec(2, 5, 1))
+setobject!(vis["awning"], xlim, MeshPhongMaterial(color=RGBA(.5,.5,.5, 1)))
+settransform!(vis["awning"],AffineMap(RotZ(pi/4),[2.1,2.1,1.8]))

@@ -4,6 +4,7 @@ using FileIO, MeshIO
 using Rotations
 using MeshCat, GeometryTypes, GeometryBasics, CoordinateTransformations, Colors
 using GeometryTypes: HyperRectangle, Vec
+using TrajOptPlots
 
 function ModifiedMeshFileObject(obj_path::String, material_path::String; scale::T=0.1) where {T}
     obj = MeshFileObject(obj_path)
@@ -81,3 +82,26 @@ function visualize!(m, Z, Δt)
     return vis
 end
 
+function TrajOptPlots._set_mesh!(vis, m; color=RGBA(.3,.3,.3,1))
+    l, r, nb = m.lengths, m.radii, m.nb
+
+    quad_scaling = 0.3
+    obj_path =  joinpath(@__DIR__, "quadrotor.obj")
+    rescaled_contents = rescale_contents(obj_path, scale=quad_scaling)
+
+    scaled_obj = MeshFileGeometry(rescaled_contents, "obj")
+    setobject!(vis["link1"], scaled_obj, MeshPhongMaterial(color=color))
+
+    for i=2:nb
+        link = GeometryBasics.Rect{3,Float64}(Vec(-r[i]/2, -r[i]/2, -l[i]/2), Vec(r[i], r[i], l[i]))
+        setobject!(vis["link$i"], link, MeshPhongMaterial(color=color))
+    end
+end
+
+function TrajOptPlots.visualize!(vis, model::LieGroupModelMC, x::SVector)
+    pos = RD.vec_states(model, x) 
+    rot = RD.rot_states(model, x) 
+    for i=1:model.nb
+        settransform!(vis["robot","link$i"], AffineMap(rot[i], pos[i]))
+    end 
+end
