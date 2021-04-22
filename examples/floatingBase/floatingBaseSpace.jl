@@ -101,12 +101,12 @@ function fullargsinds(model::FloatingSpace, i)
             13*(i-1) .+ (11:13)
 end
 
-begin
-    # basic construct test
-    a = FloatingSpace()
-    @test Altro.config_size(a) == 14
-    println(Lie_P(a))
-end
+# begin
+#     # basic construct test
+#     a = FloatingSpace()
+#     @test Altro.config_size(a) == 14
+#     println(Lie_P(a))
+# end
 
 # state config x v q w 
 # the body pose is the position and z orientation of the body link, then rotations are rotation matrices of joint angles
@@ -185,12 +185,12 @@ function generate_config_with_rand_vel(model::FloatingSpace, body_pose::Vector{<
     return generate_config_with_rand_vel(model, body_pose, rotations)
 end
 
-begin
-    # basic state genereation test
-    model = FloatingSpace()
-    x0 = generate_config(model, [2.0;2.0;1.0;0], [0])
-    println(x0)
-end
+# begin
+#     # basic state genereation test
+#     model = FloatingSpace()
+#     x0 = generate_config(model, [2.0;2.0;1.0;0], [0])
+#     println(x0)
+# end
 
 # this function returns a mech object, which is a constrainedDynamics object so that we can visualize the robot using 
 # constraineddynamics viz
@@ -231,22 +231,22 @@ function setStates!(model::FloatingSpace, mech, z)
 end
 
 # test: visualize 
-begin
-    model = FloatingSpaceOrth(2)
-    x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/4,pi/4]);
-    println(reshape(x0,(13,model.nb+1))')
-    mech = vis_mech_generation(model)
-    setStates!(model,mech,x0)
-    steps = Base.OneTo(1)
-    storage = CD.Storage{Float64}(steps,length(mech.bodies))
-    for i=1:model.nb+1
-        storage.x[i][1] = mech.bodies[i].state.xc
-        storage.v[i][1] = mech.bodies[i].state.vc
-        storage.q[i][1] = mech.bodies[i].state.qc
-        storage.ω[i][1] = mech.bodies[i].state.ωc
-    end
-    visualize(mech,storage, env = "editor")
-end
+# begin
+#     model = FloatingSpaceOrth(2)
+#     x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/4,pi/4]);
+#     println(reshape(x0,(13,model.nb+1))')
+#     mech = vis_mech_generation(model)
+#     setStates!(model,mech,x0)
+#     steps = Base.OneTo(1)
+#     storage = CD.Storage{Float64}(steps,length(mech.bodies))
+#     for i=1:model.nb+1
+#         storage.x[i][1] = mech.bodies[i].state.xc
+#         storage.v[i][1] = mech.bodies[i].state.vc
+#         storage.q[i][1] = mech.bodies[i].state.qc
+#         storage.ω[i][1] = mech.bodies[i].state.ωc
+#     end
+#     visualize(mech,storage, env = "editor")
+# end
 
 # the position constraint g
 function g(model::FloatingSpace, x)
@@ -466,33 +466,33 @@ function Gqb(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},vertices, j
 end
 
 # test: constraint g
-begin
-    model = FloatingSpace(2)
-    x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2,0.0]);
-    # gval = g(model,x0)
-    # println(gval)
-    # Dgmtx = Dg(model,x0)
-    # println(Dgmtx)
+# begin
+#     model = FloatingSpace(2)
+#     x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2,0.0]);
+#     # gval = g(model,x0)
+#     # println(gval)
+#     # Dgmtx = Dg(model,x0)
+#     # println(Dgmtx)
 
-    # TODO, test gp1 and Dgp1
-    gval = gp1(model,x0,0.01)
-    println(gval)
-    Dp1gmtx = Dgp1(model,x0,0.01)
-    # println(Dgmtx)
-    gp1aug(z) = gp1(model,z,0.01)
-    Dgp1forward = ForwardDiff.jacobian(gp1aug,x0)
-    @test Dgp1forward ≈ Dp1gmtx
+#     # TODO, test gp1 and Dgp1
+#     gval = gp1(model,x0,0.01)
+#     println(gval)
+#     Dp1gmtx = Dgp1(model,x0,0.01)
+#     # println(Dgmtx)
+#     gp1aug(z) = gp1(model,z,0.01)
+#     Dgp1forward = ForwardDiff.jacobian(gp1aug,x0)
+#     @test Dgp1forward ≈ Dp1gmtx
 
-    q_a = UnitQuaternion(RotX(0.03))
-    q_b = UnitQuaternion(RotY(0.03))
-    vertices = [1,2,3,4,5,6]
-    joint_direction = [0,0,1]
-    @show joint_direction == [0,0,1]
-    Gqa(RS.params(q_a),RS.params(q_b),vertices, joint_direction) 
-    Gqb(RS.params(q_a),RS.params(q_b),vertices, joint_direction) 
-end
+#     q_a = UnitQuaternion(RotX(0.03))
+#     q_b = UnitQuaternion(RotY(0.03))
+#     vertices = [1,2,3,4,5,6]
+#     joint_direction = [0,0,1]
+#     @show joint_direction == [0,0,1]
+#     Gqa(RS.params(q_a),RS.params(q_b),vertices, joint_direction) 
+#     Gqb(RS.params(q_a),RS.params(q_b),vertices, joint_direction) 
+# end
 
-function state_diff_jac(model::FloatingSpace,x::Vector{T}) where T
+function state_diff_jac(model::FloatingSpace,x::AbstractArray{T}) where T
     n,m = size(model)
     n̄ = state_diff_size(model)
 
@@ -503,16 +503,16 @@ function state_diff_jac(model::FloatingSpace,x::Vector{T}) where T
 end
 
 # test state_diff_jac
-begin
-    model = FloatingSpace()
-    n,m = size(model)
-    n̄ = state_diff_size(model)
-    @show n
-    @show n̄
+# begin
+#     model = FloatingSpace()
+#     n,m = size(model)
+#     n̄ = state_diff_size(model)
+#     @show n
+#     @show n̄
 
-    x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2]);
-    sparse(state_diff_jac(model, x0))
-end
+#     x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2]);
+#     sparse(state_diff_jac(model, x0))
+# end
 
 # implicity dynamics function fdyn
 # return f(x_t1, x_t, u_t, λt) = 0
@@ -1047,39 +1047,39 @@ function fdyn_attiG(model::FloatingSpace,xt1, xt)
 end
 
 # test dynamics
-begin
-    using Random
-    Random.seed!(123)
-    model = FloatingSpace(3)
-    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
-    dr = pi/14
-    x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], fill.(pi/4+dr,model.nb))
-    # x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], [pi/4])
-    # dr = pi/14
-    # x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], [pi/4+dr]);
-    u = 2*randn(6+model.nb)
-    du = 0.01*randn(6+model.nb)
-    λ = randn(5*model.nb)
-    dλ = 0.001*randn(5*model.nb)
-    dxv = zeros(model.ns)
-    dxv[(13*0).+(4:6)] = randn(3)
-    dxv[(13*0).+(11:13)] = randn(3)
-    dxv[(13*1).+(4:6)] = randn(3)
-    dxv[(13*1).+(11:13)] = randn(3)
-    dt = 0.01
-    f1 = fdyn(model,x1, x0, u, λ, dt)
-    @show f1
-    f2 = fdyn(model,x1+dxv, x0+dxv, u+du, λ+dλ, dt)
-    Dfmtx = Dfdyn(model,x1, x0, u, λ, dt)
+# begin
+#     using Random
+#     Random.seed!(123)
+#     model = FloatingSpace(3)
+#     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
+#     dr = pi/14
+#     x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], fill.(pi/4+dr,model.nb))
+#     # x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], [pi/4])
+#     # dr = pi/14
+#     # x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], [pi/4+dr]);
+#     u = 2*randn(6+model.nb)
+#     du = 0.01*randn(6+model.nb)
+#     λ = randn(5*model.nb)
+#     dλ = 0.001*randn(5*model.nb)
+#     dxv = zeros(model.ns)
+#     dxv[(13*0).+(4:6)] = randn(3)
+#     dxv[(13*0).+(11:13)] = randn(3)
+#     dxv[(13*1).+(4:6)] = randn(3)
+#     dxv[(13*1).+(11:13)] = randn(3)
+#     dt = 0.01
+#     f1 = fdyn(model,x1, x0, u, λ, dt)
+#     @show f1
+#     f2 = fdyn(model,x1+dxv, x0+dxv, u+du, λ+dλ, dt)
+#     Dfmtx = Dfdyn(model,x1, x0, u, λ, dt)
 
-    # attiG_mtx = fdyn_attiG(model,x1,x0)
+#     # attiG_mtx = fdyn_attiG(model,x1,x0)
 
-    # compare with Forward diff
-    faug(z) = fdyn(model, z[1:model.ns], z[model.ns+1:model.ns*2], z[model.ns*2+1:model.ns*2+6+model.nb], z[model.ns*2+6+model.nb+1:end], dt)
-    Df2 = ForwardDiff.jacobian(faug,[x1;x0;u;λ])
+#     # compare with Forward diff
+#     faug(z) = fdyn(model, z[1:model.ns], z[model.ns+1:model.ns*2], z[model.ns*2+1:model.ns*2+6+model.nb], z[model.ns*2+6+model.nb+1:end], dt)
+#     Df2 = ForwardDiff.jacobian(faug,[x1;x0;u;λ])
 
-    @test Dfmtx ≈ Df2
-end
+#     @test Dfmtx ≈ Df2
+# end
 
 function get_vels(model::FloatingSpace, x)
     nb = model.nb
@@ -1087,6 +1087,16 @@ function get_vels(model::FloatingSpace, x)
     ωs = [x[(i-1)*13 .+ (11:13)] for i=1:nb+1]
     return vs, ωs
 end
+function get_configs_ind(model::FloatingSpace)
+    n,m = size(model)
+    ind = BitArray(undef, n)
+    for i=1:model.nb
+        ind[(i-1)*13 .+ (1:3)] .= 1
+        ind[(i-1)*13 .+ (7:10)] .= 1
+    end
+    return ind
+end
+
 function get_vels_ind(model::FloatingSpace)
     n,m = size(model)
     ind = BitArray(undef, n)
@@ -1126,8 +1136,7 @@ end
 # x is the current state, x⁺ is the next state
 # given current state x and current U
 # use newton's method to solve for the vel part of x and the next state x⁺
-# this function modifies x!
-function discrete_dynamics!(model::FloatingSpace, x, u, λ_init, dt)
+function discrete_dynamics(model::FloatingSpace, x, u, λ_init, dt)
     n,m = size(model)
     n̄ = state_diff_size(model)
     nb = model.nb
@@ -1211,64 +1220,101 @@ function discrete_dynamics!(model::FloatingSpace, x, u, λ_init, dt)
 end
 
 # test dynamics simulation
-begin
+# begin
 
-    # x0 = generate_config(model, [0.1;0.1;1.0;pi/2], [0.001]);
-    model = FloatingSpace()
-    n,m = size(model)
-    n̄ = state_diff_size(model)
-    @show n
-    @show n̄
-    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
+#     # x0 = generate_config(model, [0.1;0.1;1.0;pi/2], [0.001]);
+#     model = FloatingSpace()
+#     n,m = size(model)
+#     n̄ = state_diff_size(model)
+#     @show n
+#     @show n̄
+#     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
 
-    U = 0.01*rand(6+model.nb)
-    dt = 0.001;
-    λ_init = zeros(5*model.nb)
-    λ = λ_init
-    x = x0
-    x1, λ = discrete_dynamics!(model,x, U, λ, dt)
-    @show fdyn(model,x1, x, U, λ, dt)
-    # println(norm(fdyn(model,x1, x, u, λ, dt)))
-    x = x0;
-    for i=1:5
-        println("step: ",i)
-        x1, λ = discrete_dynamics!(model,x, U, λ, dt)
-        println(norm(fdyn(model,x1, x, U, λ, dt)))
-        println(norm(g(model,x1)))
-        x = x1
-    end
-end
+#     U = 0.01*rand(6+model.nb)
+#     dt = 0.001;
+#     λ_init = zeros(5*model.nb)
+#     λ = λ_init
+#     x = x0
+#     x1, λ = discrete_dynamics(model,x, U, λ, dt)
+#     @show fdyn(model,x1, x, U, λ, dt)
+#     # println(norm(fdyn(model,x1, x, u, λ, dt)))
+#     x = x0;
+#     for i=1:5
+#         println("step: ",i)
+#         x1, λ = discrete_dynamics(model,x, U, λ, dt)
+#         println(norm(fdyn(model,x1, x, U, λ, dt)))
+#         println(norm(g(model,x1)))
+#         x = x1
+#     end
+# end
 
 # test: simulate and visualize 
 
-model = FloatingSpaceOrth(6)
-x0 = generate_config(model, [0.0;0.0;1.0;pi/2], fill.(pi/4,model.nb));
+# model = FloatingSpaceOrth(16)
+# x0 = generate_config(model, [0.0;0.0;1.0;pi/2], fill.(pi/4,model.nb));
 
-Tf =6
-dt = 0.005
-N = Int(Tf/dt)
+# Tf =6
+# dt = 0.005
+# N = Int(Tf/dt)
 
-mech = vis_mech_generation(model)
-x = x0
-λ_init = zeros(5*model.nb)
-λ = λ_init
-U = 0.3*rand(6+model.nb)
-# U[7] = 0.0001
-steps = Base.OneTo(Int(N))
-storage = CD.Storage{Float64}(steps,length(mech.bodies))
-for idx = 1:N
-    println("step: ",idx)
-    x1, λ1 = discrete_dynamics!(model,x, U, λ, dt)
-    println(norm(fdyn(model,x1, x, U, λ1, dt)))
-    println(norm(g(model,x1)))
-    setStates!(model,mech,x1)
-    for i=1:model.nb+1
-        storage.x[i][idx] = mech.bodies[i].state.xc
-        storage.v[i][idx] = mech.bodies[i].state.vc
-        storage.q[i][idx] = mech.bodies[i].state.qc
-        storage.ω[i][idx] = mech.bodies[i].state.ωc
-    end
-    x = x1
-    λ = λ1
+# mech = vis_mech_generation(model)
+# x = x0
+# λ_init = zeros(5*model.nb)
+# λ = λ_init
+# U = 0.3*rand(6+model.nb)
+# # U[7] = 0.0001
+# steps = Base.OneTo(Int(N))
+# storage = CD.Storage{Float64}(steps,length(mech.bodies))
+# for idx = 1:N
+#     println("step: ",idx)
+#     x1, λ1 = discrete_dynamics(model,x, U, λ, dt)
+#     println(norm(fdyn(model,x1, x, U, λ1, dt)))
+#     println(norm(g(model,x1)))
+#     setStates!(model,mech,x1)
+#     for i=1:model.nb+1
+#         storage.x[i][idx] = mech.bodies[i].state.xc
+#         storage.v[i][idx] = mech.bodies[i].state.vc
+#         storage.q[i][idx] = mech.bodies[i].state.qc
+#         storage.ω[i][idx] = mech.bodies[i].state.ωc
+#     end
+#     x = x1
+#     λ = λ1
+# end
+# visualize(mech,storage, env = "editor")
+
+# overload functions for Altro
+function RD.discrete_dynamics(::Type{Q}, model::FloatingSpace, x, u, t, dt) where Q
+    λ_init = zeros(5*model.nb)
+    x1, _ = discrete_dynamics(model,  x, u, λ_init, dt)
+    return x1
 end
-visualize(mech,storage, env = "editor")
+
+
+function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::FloatingSpace,
+    z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    x = state(z) 
+    u = control(z)
+    dt = z.dt
+    @assert dt != 0
+
+    λ_init = 1e-5*randn(5*model.nb)
+    x1, λ1 = discrete_dynamics(model,  x, u, λ_init, dt)
+
+    Dfmtx = Dfdyn(model,x1, x, u, λ1, dt)
+    ∇f .= -Dfmtx[:,1:n]\Array(Dfmtx[:,n+1:end])
+
+    # index of q in n̄
+    ind = BitArray(undef, n̄)
+    for i=1:model.nb+1
+        ind[(i-1)*12 .+ (1:3)] .= 1
+        ind[(i-1)*12 .+ (7:9)] .= 1
+    end
+    Dgmtx = Dg(model, x1)
+    attiG = state_diff_jac(model,x1)
+    # subattiG = attiG[get_configs_ind(model),ind]
+    # G[:,ind] .= Dgmtx[:,get_configs_ind(model)]*subattiG
+    G .= Dgmtx*attiG
+end
