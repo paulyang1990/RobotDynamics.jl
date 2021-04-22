@@ -47,7 +47,7 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
         body_size = 0.5
         arm_length = 1.0
         joint_vertices = [[body_size/2, 0, 0, -arm_length/2, 0, 0]]
-        for i=1:nb
+        for i=1:nb-1
             push!(joint_vertices,[arm_length/2, 0, 0, -arm_length/2, 0, 0])
         end
 
@@ -413,16 +413,16 @@ function Dgp1(model::FloatingSpace, x, dt)
         ∂dqb1∂dqb = dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -w_b'*w_b);w_b]))      
         ∂dqb1∂dwb = dt/2*(-q_b*w_b'/sqrt(4/dt^2 -w_b'*w_b) + RS.lmult(q_b)*RS.hmat())  
 
-        Dgblock[:,13*0 .+ (1:3)] =  ∂dgp1∂dra1 # dg/dra
-        Dgblock[:,13*0 .+ (4:6)] =  ∂dgp1∂dra1*∂dra1∂dva# dg/dva
+        Dgblock[:,r_ainds] =  ∂dgp1∂dra1 # dg/dra
+        Dgblock[:,v_ainds] =  ∂dgp1∂dra1*∂dra1∂dva# dg/dva
 
-        Dgblock[:,13*1 .+ (1:3)]  = ∂dgp1∂drb1  # dg/drb
-        Dgblock[:,13*1 .+ (4:6)]  =  ∂dgp1∂drb1*∂drb1∂dvb# dg/dvb
+        Dgblock[:,r_binds]  = ∂dgp1∂drb1  # dg/drb
+        Dgblock[:,v_binds]  =  ∂dgp1∂drb1*∂drb1∂dvb# dg/dvb
 
-        Dgblock[:,13*0 .+ (7:10)] = ∂dgp1∂dqa1*∂dqa1∂dqa# dg/dqa
-        Dgblock[:,13*0 .+ (11:13)] = ∂dgp1∂dqa1*∂dqa1∂dwa# dg/dwa
-        Dgblock[:,13*1 .+ (7:10)] =  ∂dgp1∂dqb1*∂dqb1∂dqb# dg/dqb
-        Dgblock[:,13*1 .+ (11:13)] =  ∂dgp1∂dqb1*∂dqb1∂dwb# dg/dwb
+        Dgblock[:,q_ainds] = ∂dgp1∂dqa1*∂dqa1∂dqa# dg/dqa
+        Dgblock[:,w_ainds] = ∂dgp1∂dqa1*∂dqa1∂dwa# dg/dwa
+        Dgblock[:,q_binds] =  ∂dgp1∂dqb1*∂dqb1∂dqb# dg/dqb
+        Dgblock[:,w_binds] =  ∂dgp1∂dqb1*∂dqb1∂dwb# dg/dwb
     end
     return Dgmtx
 end
@@ -467,8 +467,8 @@ end
 
 # test: constraint g
 begin
-    model = FloatingSpace()
-    x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2]);
+    model = FloatingSpace(2)
+    x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2,0.0]);
     # gval = g(model,x0)
     # println(gval)
     # Dgmtx = Dg(model,x0)
@@ -1241,7 +1241,7 @@ end
 
 # test: simulate and visualize 
 
-model = FloatingSpace(2)
+model = FloatingSpaceOrth(6)
 x0 = generate_config(model, [0.0;0.0;1.0;pi/2], fill.(pi/4,model.nb));
 
 Tf =6
