@@ -428,7 +428,7 @@ function Dgp1(model::FloatingSpace, x, dt)
 end
 
 # this calculates a part of Dg*attiG, only related to G_qa , dim is 5x3
-function Gqa(q_a::SArray{Tuple{4},Float64,1,4},q_b::SArray{Tuple{4},Float64,1,4},vertices, joint_direction)  
+function Gqa(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},vertices, joint_direction)  where T
     vertex1 = vertices[1:3]
     vertex2 = vertices[4:6]
     cmat = [0 1.0 0; 
@@ -447,7 +447,7 @@ function Gqa(q_a::SArray{Tuple{4},Float64,1,4},q_b::SArray{Tuple{4},Float64,1,4}
 end
 
 # this calculates a part of Dg*attiG, only related to G_qb, dim is 5x3
-function Gqb(q_a::SArray{Tuple{4},Float64,1,4},q_b::SArray{Tuple{4},Float64,1,4},vertices, joint_direction)  
+function Gqb(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},vertices, joint_direction)  where T
     vertex1 = vertices[1:3]
     vertex2 = vertices[4:6]
     cmat = [0 0 1; 
@@ -478,7 +478,7 @@ begin
     gval = gp1(model,x0,0.01)
     println(gval)
     Dp1gmtx = Dgp1(model,x0,0.01)
-    println(Dgmtx)
+    # println(Dgmtx)
     gp1aug(z) = gp1(model,z,0.01)
     Dgp1forward = ForwardDiff.jacobian(gp1aug,x0)
     @test Dgp1forward ≈ Dp1gmtx
@@ -565,12 +565,12 @@ function fdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
 
             # angular velocity
             vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
-            joint_direction = model.joint_directions[joint_after_id]
+            joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
             Gqamtx = Gqa(qat1,qbt1,vertices, joint_direction)  
             Ja = model.body_inertias
             a = Ja * wat1 * sqrt(4/dt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/dt^2 - wat'*wat) + cross(wat,(Ja * wat))
-            k = - 2*taut + 2*tau_joint*joint_direction - Gqamtx'*λt_block
-            fdyn_vec_block[11:13] = a+k
+            k = - 2*taut + 2*tau_joint*joint_direction 
+            fdyn_vec_block[11:13] = a+k - Gqamtx'*λt_block
 
         elseif (link_id >= 2 && link_id < model.nb+1) # normal arm link
             # get next link state from xt1
@@ -593,26 +593,24 @@ function fdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
             # velocity 
             Ma = diagm([model.arm_mass,model.arm_mass,model.arm_mass])
             aa = Ma*(vat1-vat) + Ma*[0;0;model.g]*dt
-            fdyn_vec_block[4:6] =  aa - [-I(3);zeros(2,3)]'*next_λt_block*dt   
-                                -  [I(3);zeros(2,3)]'*prev_λt_block*dt
+            fdyn_vec_block[4:6] =  aa -[-I(3);zeros(2,3)]'*next_λt_block*dt -[I(3);zeros(2,3)]'*prev_λt_block*dt
             # orientation
             fdyn_vec_block[7:10] = qat1 - dt/2*RS.lmult(qat)*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
             # angular velocity (need to add previous joint constraint)
             # joint between a and b # use Gra
             next_vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
-            next_joint_direction = model.joint_directions[joint_after_id]
+            next_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
             Gqamtx = Gqa(qat1,qbt1,next_vertices, next_joint_direction)  
             # joint between z and a  # use Grb
             prev_vertices = model.joint_vertices[joint_before_id] # notice joint_vertices is 6x1
-            prev_joint_direction = model.joint_directions[joint_before_id]
-            Gqzmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction)  
+            prev_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_before_id])
 
+            Gqzmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction)  
 
             Ja = model.arm_inertias
             a = Ja * wat1 * sqrt(4/dt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/dt^2 - wat'*wat) + cross(wat,(Ja * wat))
-            k =  - 2*prev_tau_joint*prev_joint_direction
-                 + 2*next_tau_joint*next_joint_direction - Gqamtx'*next_λt_block - Gqzmtx'*prev_λt_block
-                 fdyn_vec_block[11:13] = a+k
+            k =  - 2*prev_tau_joint*prev_joint_direction + 2*next_tau_joint*next_joint_direction 
+            fdyn_vec_block[11:13] = a+k - Gqamtx'*next_λt_block - Gqzmtx'*prev_λt_block
 
         else # the last link 
             # get previous link state from xt1
@@ -632,32 +630,433 @@ function fdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
             # angular velocity (need to add previous joint constraint)
             # joint between z and a 
             prev_vertices = model.joint_vertices[joint_before_id] # notice joint_vertices is 6x1
-            prev_joint_direction = model.joint_directions[joint_before_id]
+            prev_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_before_id])
             Gqzmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction) 
 
             Ja = model.arm_inertias
             a = Ja * wat1 * sqrt(4/dt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/dt^2 - wat'*wat) + cross(wat,(Ja * wat))
             k =  - 2*prev_tau_joint*prev_joint_direction
-                 - Gqzmtx'*prev_λt_block
-            fdyn_vec_block[11:13] = a+k
+
+            fdyn_vec_block[11:13] = a+k- Gqzmtx'*prev_λt_block
 
         end
     end
     return fdyn_vec
 end
-# TODO: function Dfdyn
-# TODO: function attiG_f
-# TODO: discrete_dynamics!
+
+# helper functions for calculation jacobian
+# following functions are from Jan's ConstrainedDynamics/src/util/quaternion.jl
+function ∂L∂q() 
+    return SA{Float64}[
+        1 0 0 0
+        0 1 0 0
+        0 0 1 0
+        0 0 0 1
+
+        0 -1 0 0
+        1 0 0 0
+        0 0 0 1
+        0 0 -1 0
+
+        0 0 -1 0
+        0 0 0 -1
+        1 0 0 0
+        0 1 0 0
+        
+        0 0 0 -1
+        0 0 1 0
+        0 -1 0 0
+        1 0 0 0
+    ]
+end
+function ∂Lᵀ∂q() 
+    return SA{Float64}[
+        1 0 0 0
+        0 -1 0 0
+        0 0 -1 0
+        0 0 0 -1
+        
+        0 1 0 0
+        1 0 0 0
+        0 0 0 -1
+        0 0 1 0
+        
+        0 0 1 0
+        0 0 0 1
+        1 0 0 0
+        0 -1 0 0
+        
+        0 0 0 1
+        0 0 -1 0
+        0 1 0 0
+        1 0 0 0
+    ]
+end
+function ∂R∂q() 
+    return SA{Float64}[
+        1 0 0 0
+        0 1 0 0
+        0 0 1 0
+        0 0 0 1
+        
+        0 -1 0 0
+        1 0 0 0
+        0 0 0 -1
+        0 0 1 0
+        
+        0 0 -1 0
+        0 0 0 1
+        1 0 0 0
+        0 -1 0 0
+        
+        0 0 0 -1
+        0 0 -1 0
+        0 1 0 0
+        1 0 0 0
+    ]
+end
+function ∂Rᵀ∂q() 
+    return SA{Float64}[
+        1 0 0 0
+        0 -1 0 0
+        0 0 -1 0
+        0 0 0 -1
+        
+        0 1 0 0
+        1 0 0 0
+        0 0 0 1
+        0 0 -1 0
+        
+        0 0 1 0
+        0 0 0 -1
+        1 0 0 0
+        0 1 0 0
+        
+        0 0 0 1
+        0 0 1 0
+        0 -1 0 0
+        1 0 0 0
+    ]
+end
+# the jacobian of Gqaᵀλ wrt to qa
+function ∂Gqaᵀλ∂qa(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction)    where T 
+    vertex1 = SVector{4}(float([0.0;vertices[1:3]]))                      # pa
+    cmat = [0 0 1; 
+            1 0 0]
+    if joint_direction == [0,0,1]
+        cmat = [0 1 0; 
+               1 0 0]
+    else
+        cmat = [0 0 1; 
+                1 0 0]
+    end 
+    a = -2*RS.vmat()*kron((RS.rmult(vertex1)'*RS.rmult(q_a)*RS.hmat()*λt[1:3])',I(4))*∂Lᵀ∂q()
+    b = -2*RS.vmat()*RS.lmult(q_a)'*RS.rmult(vertex1)'*kron((RS.hmat()*λt[1:3])',I(4))*∂R∂q()
+    c = -RS.vmat()*kron((RS.lmult(q_b)*RS.hmat()*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
+    return a+b+c
+end
+# the jacobian of Gqaᵀλ wrt to qb
+function ∂Gqaᵀλ∂qb(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction)    where T
+    cmat = [0 0 1; 
+            1 0 0]
+    if joint_direction == [0,0,1]
+        cmat = [0 1 0; 
+               1 0 0]
+    else
+        cmat = [0 0 1; 
+                1 0 0]
+    end   
+    return -RS.vmat()*RS.lmult(q_a)'*kron((RS.hmat()*cmat'*λt[4:5])',I(4))*∂L∂q()
+end
+
+# the jacobian of Gqbᵀλ wrt to qa
+function ∂Gqbᵀλ∂qa(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction)    where T
+    cmat = [0 0 1; 
+            1 0 0]
+    if joint_direction == [0,0,1]
+        cmat = [0 1 0; 
+               1 0 0]
+    else
+        cmat = [0 0 1; 
+                1 0 0]
+    end   
+    return RS.vmat()*RS.lmult(q_b)'*kron((RS.hmat()*cmat'*λt[4:5])',I(4))*∂L∂q()
+end
+# the jacobian of Gqbᵀλ wrt to qb
+function ∂Gqbᵀλ∂qb(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction)   where T
+    vertex2 = SVector{4}(float([0.0;vertices[4:6]]))                      # pb
+    cmat = [0 0 1; 
+            1 0 0]
+    if joint_direction == [0,0,1]
+        cmat = [0 1 0; 
+               1 0 0]
+    else
+        cmat = [0 0 1; 
+                1 0 0]
+    end 
+    a = 2*RS.vmat()*kron((RS.rmult(vertex2)'*RS.rmult(q_b)*RS.hmat()*λt[1:3])',I(4))*∂Lᵀ∂q()
+    b = 2*RS.vmat()*RS.lmult(q_b)'*RS.rmult(vertex2)'*kron((RS.hmat()*λt[1:3])',I(4))*∂R∂q()
+    c = RS.vmat()*kron((RS.lmult(q_a)*RS.hmat()*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
+    return a+b+c 
+end
+
+# The jacobian of function Dfdyn
+# most complicated function!
+function Dfdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
+    nb = model.nb
+    ns = model.ns   # ns = 13*(nb+1)
+    nr = 13         #size of one rigidbody
+    nc = 5          #size of one joint constraint 
+    nu = 6+nb       # size of all control ut
+    # this function will have a lot of confusing index gymnastics
+    nd = ns*2 + nu + nc*(nb)
+    Dfmtx = spzeros(model.ns, nd)   # [xt1;xt;ut;λt]
+
+    for link_id=1:model.nb+1
+        Dfmtx_block = view(Dfmtx, (nr*(link_id-1)).+(1:nr),:) #13 x nd
+        joint_before_id = link_id-1
+        joint_after_id  = link_id
+        # iterate through all rigid bodies
+        r_ainds, v_ainds, q_ainds, w_ainds = fullargsinds(model, link_id) # a is the current link
+
+        # get state from xt1
+        rat1 = xt1[r_ainds]
+        vat1 = xt1[v_ainds]
+        qat1 = SVector{4}(xt1[q_ainds])
+        wat1 = xt1[w_ainds]
+        # get state from xt
+        rat = xt[r_ainds]
+        vat = xt[v_ainds]
+        qat = SVector{4}(xt[q_ainds])
+        wat = xt[w_ainds]
+        # link_id==1 (the body) need special attention 
+        # link_id==nb+1 (the last arm link)
+        if (link_id == 1)  #the body link
+            # get next link state from xt1
+            r_binds, v_binds, q_binds, w_binds = fullargsinds(model, link_id+1) # b is the next link
+            rbt1 = xt1[r_binds]
+            qbt1 = SVector{4}(xt1[q_binds])
+            # joint between a and b # use Gra
+            next_vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
+            next_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
+            Gqamtx = Gqa(qat1,qbt1,next_vertices, next_joint_direction) 
+
+
+            Ma = diagm([model.body_mass,model.body_mass,model.body_mass])
+
+            # derivative of eqn 1, position
+            Dfmtx_block[1:3, r_ainds] = I(3)                 # 3x3   d[rat1 - (rat + vat*dt)]/d rat1
+            Dfmtx_block[1:3, (ns .+r_ainds)] = -I(3)           # 3x3   d[rat1 - (rat + vat*dt)]/d rat
+            Dfmtx_block[1:3, (ns .+v_ainds)] = -I(3)*dt        # 3x3   d[rat1 - (rat + vat*dt)]/d vat
+
+            # derivative of eqn 3, velocity 
+            Dfmtx_block[4:6, v_ainds] = Ma                   # 3x3
+            Dfmtx_block[4:6, (ns .+v_ainds)] = -Ma             # 3x3
+            Dfmtx_block[4:6, (ns + ns).+(1:3)] = -I(3)*dt                    # 3x3   u[1:3]
+            Dfmtx_block[4:6, (ns + ns + nu).+((5*(joint_after_id-1)).+(1:5))] = - [-I;zeros(2,3)]'*dt   # 3x3
+
+            # derivative of eqn 5, orientation 
+            Dfmtx_block[7:10, q_ainds] = I(4)                        # 4x4
+            Dfmtx_block[7:10, (ns .+q_ainds)] = -dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -wat'*wat);wat]))   # 4x4
+            Dfmtx_block[7:10, (ns .+w_ainds)] = -dt/2*(-qat*wat'/sqrt(4/dt^2 -wat'*wat) + RS.lmult(qat)*RS.hmat())   # 4x3
+
+            # derivative of eqn 7, angular velocity
+
+            λt_block = λt[(5*(link_id-1)).+(1:5)]
+            vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
+            joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
+            Gqamtx = Gqa(qat1,qbt1,vertices, joint_direction)
+            ∂Gqaᵀλ∂qa1_mtx = ∂Gqaᵀλ∂qa(qat1,qbt1,λt_block,vertices, joint_direction)
+            ∂Gqaᵀλ∂qb1_mtx = ∂Gqaᵀλ∂qb(qat1,qbt1,λt_block,vertices, joint_direction)
+
+            # d (Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1)) / d wat1, following are matlab code 
+            Ja = model.body_inertias
+            J11 = Ja[1,1];J12 = Ja[1,2];J13 = Ja[1,3];
+            J21 = Ja[2,1];J22 = Ja[2,2];J23 = Ja[2,3];
+            J31 = Ja[3,1];J32 = Ja[3,2];J33 = Ja[3,3];
+            w1 = wat1[1]; w2 = wat1[2]; w3 = wat1[3];
+            row1 = [                    J31*w2 - J21*w3 + J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 + J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 + J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 + J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 + J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 + J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 + J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 + J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 + J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            Dfmtx_block[11:13, w_ainds] = [row1 row2 row3]'
+            # d (- Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat)) / dwat
+            w1 = wat[1]; w2 = wat[2]; w3 = wat[3];
+            row1 = [                    J31*w2 - J21*w3 - J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 - J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 - J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 - J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 - J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 - J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            Dfmtx_block[11:13, (ns .+w_ainds)] = [row1 row2 row3]'
+
+            # d G_qa1t'*λt /dqa1t 
+            Dfmtx_block[11:13, q_ainds] = -∂Gqaᵀλ∂qa1_mtx
+            # d G_qa1t'*λt /dqb1t 
+            Dfmtx_block[11:13, q_binds] = -∂Gqaᵀλ∂qb1_mtx
+
+            Dfmtx_block[11:13, (ns*2).+(4:6)] =  -2*I(3)
+            Dfmtx_block[11:13, (ns*2).+(6+joint_after_id)] =  2*joint_direction
+            Dfmtx_block[11:13, (ns*2 + nu + 5*(joint_after_id-1)).+(1:5)] = -Gqamtx' 
+
+        elseif (link_id >= 2 && link_id < model.nb+1) # normal arm link
+            Ma = diagm([model.arm_mass,model.arm_mass,model.arm_mass])
+            # get next link state from xt1
+            r_binds, v_binds, q_binds, w_binds = fullargsinds(model, link_id+1) # b is the next link
+            rbt1 = xt1[r_binds]
+            qbt1 = SVector{4}(xt1[q_binds])
+            # get previous link state from xt1
+            r_zinds, v_zinds, q_zinds, w_zinds = fullargsinds(model, link_id-1) # z is the previous link
+            rzt1 = xt1[r_zinds]
+            qzt1 = SVector{4}(xt1[q_zinds])
+
+            next_λt_block = λt[(5*(joint_after_id-1)).+(1:5)]
+            prev_λt_block = λt[(5*(joint_before_id-1)).+(1:5)]
+
+            next_vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
+            next_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
+            Gqamtx = Gqa(qat1,qbt1,next_vertices, next_joint_direction)  
+            ∂Gqaᵀλ∂qa1_mtx = ∂Gqaᵀλ∂qa(qat1,qbt1,next_λt_block,next_vertices, next_joint_direction)
+            ∂Gqaᵀλ∂qb1_mtx = ∂Gqaᵀλ∂qb(qat1,qbt1,next_λt_block,next_vertices, next_joint_direction)
+            # joint between z and a  # use Grb
+            prev_vertices = model.joint_vertices[joint_before_id] # notice joint_vertices is 6x1
+            prev_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_before_id])
+            Gqbmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction)  
+            ∂Gqbᵀλ∂qz1_mtx = ∂Gqbᵀλ∂qa(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction)
+            ∂Gqbᵀλ∂qa1_mtx = ∂Gqbᵀλ∂qb(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction)
+
+            # derivative of eqn 1, position
+            Dfmtx_block[1:3, r_ainds] = I(3)                 # 3x3   d[rat1 - (rat + vat*dt)]/d rat1
+            Dfmtx_block[1:3, (ns .+r_ainds)] = -I(3)           # 3x3   d[rat1 - (rat + vat*dt)]/d rat
+            Dfmtx_block[1:3, (ns .+v_ainds)] = -I(3)*dt        # 3x3   d[rat1 - (rat + vat*dt)]/d vat
+
+            # derivative of eqn 3, velocity 
+            Dfmtx_block[4:6, v_ainds] = Ma                   # 3x3
+            Dfmtx_block[4:6, (ns .+v_ainds)] = -Ma             # 3x3
+            Dfmtx_block[4:6, (ns + ns + nu).+((5*(joint_before_id-1)).+(1:5))] = - [I;zeros(2,3)]'*dt   # 3x3   # this for joint before 
+            Dfmtx_block[4:6, (ns + ns + nu).+((5*(joint_after_id-1)).+(1:5))] = - [-I;zeros(2,3)]'*dt   # 3x3   # this for joint before 
+
+            # derivative of eqn 5, orientation 
+            Dfmtx_block[7:10, q_ainds] = I(4)                        # 4x4
+            Dfmtx_block[7:10, (ns .+q_ainds)] = -dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -wat'*wat);wat]))   # 4x4
+            Dfmtx_block[7:10, (ns .+w_ainds)] = -dt/2*(-qat*wat'/sqrt(4/dt^2 -wat'*wat) + RS.lmult(qat)*RS.hmat())   # 4x3
+
+            # derivative of eqn 7, angular velocity
+            # d (Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1)) / d wat1, following are matlab code 
+            Ja = model.arm_inertias
+            J11 = Ja[1,1];J12 = Ja[1,2];J13 = Ja[1,3];
+            J21 = Ja[2,1];J22 = Ja[2,2];J23 = Ja[2,3];
+            J31 = Ja[3,1];J32 = Ja[3,2];J33 = Ja[3,3];
+            w1 = wat1[1]; w2 = wat1[2]; w3 = wat1[3];
+            row1 = [                    J31*w2 - J21*w3 + J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 + J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 + J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 + J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 + J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 + J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 + J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 + J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 + J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            Dfmtx_block[11:13, w_ainds] = [row1 row2 row3]'
+            # d (- Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat)) / dwat
+            w1 = wat[1]; w2 = wat[2]; w3 = wat[3];
+            row1 = [                    J31*w2 - J21*w3 - J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 - J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 - J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 - J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 - J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 - J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            Dfmtx_block[11:13, (ns .+w_ainds)] = [row1 row2 row3]'
+
+
+            # d G_qz1t'*λt /dqz1t  
+            Dfmtx_block[11:13, q_zinds] = -∂Gqbᵀλ∂qz1_mtx
+            # d G_qz1t'*λt /dqa1t 
+            Dfmtx_block[11:13, q_ainds] = -∂Gqbᵀλ∂qa1_mtx -∂Gqaᵀλ∂qa1_mtx
+            # d G_qa1t'*λt /dqb1t 
+            Dfmtx_block[11:13, q_binds] = -∂Gqaᵀλ∂qb1_mtx
+
+            Dfmtx_block[11:13, (ns*2).+(6+joint_before_id)] =  -2*prev_joint_direction
+            Dfmtx_block[11:13, (ns*2).+(6+joint_after_id)] =  2*next_joint_direction
+            Dfmtx_block[11:13, (ns*2 + nu + 5*(joint_before_id-1)).+(1:5)] = -Gqbmtx' 
+            Dfmtx_block[11:13, (ns*2 + nu + 5*(joint_after_id-1)).+(1:5)] = -Gqamtx' 
+
+
+        else # the last link
+            Ma = diagm([model.arm_mass,model.arm_mass,model.arm_mass])            
+            # get previous link state from xt1
+            r_zinds, v_zinds, q_zinds, w_zinds = fullargsinds(model, link_id-1) # z is the previous link
+            rzt1 = xt1[r_zinds]
+            qzt1 = SVector{4}(xt1[q_zinds])
+            prev_λt_block = λt[(5*(joint_before_id-1)).+(1:5)]
+            prev_vertices = model.joint_vertices[joint_before_id] # notice joint_vertices is 6x1
+            prev_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_before_id])
+            Gqbmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction) 
+            ∂Gqbᵀλ∂qz1_mtx = ∂Gqbᵀλ∂qa(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction)
+            ∂Gqbᵀλ∂qa1_mtx = ∂Gqbᵀλ∂qb(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction)
+
+            # derivative of eqn 1, position
+            Dfmtx_block[1:3, r_ainds] = I(3)                 # 3x3   d[rat1 - (rat + vat*dt)]/d rat1
+            Dfmtx_block[1:3, (ns .+r_ainds)] = -I(3)           # 3x3   d[rat1 - (rat + vat*dt)]/d rat
+            Dfmtx_block[1:3, (ns .+v_ainds)] = -I(3)*dt        # 3x3   d[rat1 - (rat + vat*dt)]/d vat
+
+            # derivative of eqn 3, velocity 
+            Dfmtx_block[4:6, v_ainds] = Ma                   # 3x3
+            Dfmtx_block[4:6, (ns .+v_ainds)] = -Ma             # 3x3
+            Dfmtx_block[4:6, (ns + ns + nu).+((5*(joint_before_id-1)).+(1:5))] = - [I;zeros(2,3)]'*dt   # 3x3   # this for joint before 
+
+            # derivative of eqn 5, orientation 
+            Dfmtx_block[7:10, q_ainds] = I(4)                        # 4x4
+            Dfmtx_block[7:10, (ns .+q_ainds)] = -dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -wat'*wat);wat]))   # 4x4
+            Dfmtx_block[7:10, (ns .+w_ainds)] = -dt/2*(-qat*wat'/sqrt(4/dt^2 -wat'*wat) + RS.lmult(qat)*RS.hmat())   # 4x3
+
+            # derivative of eqn 7, angular velocity
+            # d (Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1)) / d wat1, following are matlab code 
+            Ja = model.arm_inertias
+            J11 = Ja[1,1];J12 = Ja[1,2];J13 = Ja[1,3];
+            J21 = Ja[2,1];J22 = Ja[2,2];J23 = Ja[2,3];
+            J31 = Ja[3,1];J32 = Ja[3,2];J33 = Ja[3,3];
+            w1 = wat1[1]; w2 = wat1[2]; w3 = wat1[3];
+            row1 = [                    J31*w2 - J21*w3 + J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 + J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 + J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 + J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 + J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 + J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 + J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 + J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 + J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            Dfmtx_block[11:13, w_ainds] = [row1 row2 row3]'
+            # d (- Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat)) / dwat
+            w1 = wat[1]; w2 = wat[2]; w3 = wat[3];
+            row1 = [                    J31*w2 - J21*w3 - J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 - J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 - J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 - J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 - J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 - J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+            Dfmtx_block[11:13, (ns .+w_ainds)] = [row1 row2 row3]'
+
+            # d G_qz1t'*λt /dqz1t 
+            Dfmtx_block[11:13, q_zinds] = -∂Gqbᵀλ∂qz1_mtx
+            # d G_qz1t'*λt /dqa1t 
+            Dfmtx_block[11:13, q_ainds] = -∂Gqbᵀλ∂qa1_mtx
+
+            Dfmtx_block[11:13, (ns*2).+(6+joint_before_id)] =  -2*prev_joint_direction
+            Dfmtx_block[11:13, (ns*2 + nu + 5*(joint_before_id-1)).+(1:5)] = -Gqbmtx' 
+        end
+
+    end
+    return Dfmtx
+end
+
+# function attiG_f
+#13*(nb+1)*2 + 6 + (nb) + 5*(nb)   -  12*(nb+1)*2 + 6 + (nb) + 5*(nb) 
+# attitude Jacobian So that Dfmtx * attiG_mtx ==> size(26,60) where 60 is the size of error state 
+# this is really cumbersome to manually construct. something like state_diff_jacobian in Altro is definitely better
+function fdyn_attiG(model::FloatingSpace,xt1, xt)
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    nb = model.nb
+
+    G1 = state_diff_jac(model,xt1)
+    G2 = state_diff_jac(model,xt)
+    attiG_mtx = spzeros(n*2 + 6 + (nb) + 5*(nb), n̄*2 + 6 + (nb) + 5*(nb) )
+    attiG_mtx[1:n,1:n̄] = G1
+    attiG_mtx[n+1:2*n,n̄+1:2*n̄] = G2
+    attiG_mtx[2*n+1:end,2*n̄+1:end] = I(6 + (nb) + 5*(nb))
+    return attiG_mtx
+end
 
 # test dynamics
-
 begin
     using Random
     Random.seed!(123)
-    model = FloatingSpace()
-    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], [pi/4])
+    model = FloatingSpace(3)
+    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
     dr = pi/14
-    x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], [pi/4+dr]);
+    x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], fill.(pi/4+dr,model.nb))
+    # x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], [pi/4])
+    # dr = pi/14
+    # x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], [pi/4+dr]);
     u = 2*randn(6+model.nb)
     du = 0.01*randn(6+model.nb)
     λ = randn(5*model.nb)
@@ -671,4 +1070,205 @@ begin
     f1 = fdyn(model,x1, x0, u, λ, dt)
     @show f1
     f2 = fdyn(model,x1+dxv, x0+dxv, u+du, λ+dλ, dt)
+    Dfmtx = Dfdyn(model,x1, x0, u, λ, dt)
+
+    # attiG_mtx = fdyn_attiG(model,x1,x0)
+
+    # compare with Forward diff
+    faug(z) = fdyn(model, z[1:model.ns], z[model.ns+1:model.ns*2], z[model.ns*2+1:model.ns*2+6+model.nb], z[model.ns*2+6+model.nb+1:end], dt)
+    Df2 = ForwardDiff.jacobian(faug,[x1;x0;u;λ])
+
+    @test Dfmtx ≈ Df2
 end
+
+function get_vels(model::FloatingSpace, x)
+    nb = model.nb
+    vs = [x[(i-1)*13 .+ (4:6)] for i=1:nb+1]
+    ωs = [x[(i-1)*13 .+ (11:13)] for i=1:nb+1]
+    return vs, ωs
+end
+function get_vels_ind(model::FloatingSpace)
+    n,m = size(model)
+    ind = BitArray(undef, n)
+    for i=1:model.nb+1
+        ind[(i-1)*13 .+ (4:6)] .= 1
+        ind[(i-1)*13 .+ (11:13)] .= 1
+    end
+    return ind
+end
+# calculate the position and orientation parts in x⁺ by propagate x
+function propagate_config!(model::FloatingSpace, x⁺, x, dt) 
+    nb = model.nb
+    n,m = size(model)
+    P = Lie_P(model)
+    lie = RD.LieState(UnitQuaternion{eltype(x)}, P)
+
+    vec = RD.vec_states(lie, x) 
+    rot = RD.rot_states(lie, x) 
+
+    vs, ωs = get_vels(model, x)
+    for i=1:nb+1
+        pos_ind =(i-1)*13 .+  (1:3)
+        # due to the irregularity in vec state
+        if i == 1
+            x⁺[pos_ind] = vec[i][1:3] + vs[i]*dt
+        else
+            x⁺[pos_ind] = vec[i][4:6] + vs[i]*dt
+        end
+        
+        rot_ind = (i-1)*13 .+ (7:10)
+        x⁺[rot_ind] = dt/2 * RS.lmult(rot[i]) * [sqrt(4/dt^2 - ωs[i]'ωs[i]); ωs[i]]
+    end
+
+    return 
+end
+
+# x is the current state, x⁺ is the next state
+# given current state x and current U
+# use newton's method to solve for the vel part of x and the next state x⁺
+# this function modifies x!
+function discrete_dynamics!(model::FloatingSpace, x, u, λ_init, dt)
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    nb = model.nb
+    λ = zeros(eltype(x),5*model.nb)
+    λ = λ_init
+    x⁺ = Vector(x)
+    for id=1:model.nb+1
+        x⁺[(13*(id-1)) .+ (1:3)] = x[(13*(id-1)) .+ (1:3)] + x[(13*(id-1)) .+ (4:6)]*dt
+        wat = x[(13*(id-1)) .+ (11:13)]
+        qat = x[(13*(id-1)) .+ (7:10)]
+        x⁺[(13*(id-1)) .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qat))*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
+    end
+
+    x⁺_new, λ_new = copy(x⁺), copy(λ)
+
+    max_iters, line_iters, ϵ = 200, 30, 1e-6
+    for i=1:max_iters  
+        # Newton step    
+        # 31 = 26 + 5
+        err_vec = [fdyn(model,x⁺, x, u, λ, dt);
+                   gp1(model,x⁺,dt)]
+
+        err = norm(err_vec)
+        # println(" err_vec: ", err)
+        # jacobian of x+ and λ
+        atti_G = state_diff_jac(model, x⁺)
+        G = Dgp1(model,x⁺,dt)*atti_G
+        Fdyn = Dfdyn(model,x⁺, x, u, λ, dt)*fdyn_attiG(model,x⁺,x)
+
+        # x⁺ , lambda
+        F = [Fdyn[:,1:n̄] Fdyn[:,n̄*2+6+nb+1:end];
+                G  spzeros(5*nb,5*nb)]
+        Δs = -F\err_vec  #(n̄+5*nb)x1
+        # backtracking line search
+        j=0
+        α = 1
+        ρ = 0.5
+        c = 0.01 
+
+        err_new = err + 9999
+        while (err_new > err + c*α*(err_vec/err)'*F*Δs)
+
+            Δλ = α*Δs[(n̄) .+ (1:5*nb)]
+            λ_new .= λ + Δλ
+            Δx⁺ = α*Δs[1:n̄] 
+
+            # this is a hack, maps Δx⁺ from size n̄ to N
+            remap_Δx⁺ = atti_G*Δx⁺
+
+            # # update velocities in x⁺
+            # vel_inds = get_vels_ind(model)
+            # x⁺_new[vel_inds] .= x⁺[vel_inds] + remap_Δx⁺[vel_inds]
+            for id=1:model.nb+1
+                x⁺_new[(13*(id-1)) .+ (1:3)] = x⁺[(13*(id-1)) .+ (1:3)] + Δx⁺[(12*(id-1)) .+ (1:3)]
+                x⁺_new[(13*(id-1)) .+ (4:6)] = x⁺[(13*(id-1)) .+ (4:6)] + Δx⁺[(12*(id-1)) .+ (4:6)]
+                phi = Δx⁺[(12*(id-1)) .+ (7:9)]
+                x⁺_new[(13*(id-1)) .+ (7:10)] = RS.lmult(SVector{4}(x⁺[(13*(id-1)) .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+
+                x⁺_new[(13*(id-1)) .+ (11:13)] = x⁺[(13*(id-1)) .+ (11:13)] + Δx⁺[(12*(id-1)) .+ (10:12)]
+            end
+
+            _, ωs⁺ = get_vels(model, x⁺_new)
+            if all(1/dt^2 .>= dot(ωs⁺,ωs⁺))
+                err_vec = [fdyn(model,x⁺_new, x, u, λ_new, dt);
+                        gp1(model,x⁺_new,dt)]
+                err_new = norm(err_vec)
+            end
+            α = α*ρ
+            j += 1
+        end
+        # println(" steps: ", j)
+        # println(" err_new: ", err_new)
+        x⁺ .= x⁺_new
+        λ .= λ_new
+        if err_new < ϵ
+            # println(round.(fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)')
+            return x⁺, λ
+        end
+    end
+    return x⁺, λ 
+end
+
+# test dynamics simulation
+begin
+
+    # x0 = generate_config(model, [0.1;0.1;1.0;pi/2], [0.001]);
+    model = FloatingSpace()
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    @show n
+    @show n̄
+    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
+
+    U = 0.01*rand(6+model.nb)
+    dt = 0.001;
+    λ_init = zeros(5*model.nb)
+    λ = λ_init
+    x = x0
+    x1, λ = discrete_dynamics!(model,x, U, λ, dt)
+    @show fdyn(model,x1, x, U, λ, dt)
+    # println(norm(fdyn(model,x1, x, u, λ, dt)))
+    x = x0;
+    for i=1:5
+        println("step: ",i)
+        x1, λ = discrete_dynamics!(model,x, U, λ, dt)
+        println(norm(fdyn(model,x1, x, U, λ, dt)))
+        println(norm(g(model,x1)))
+        x = x1
+    end
+end
+
+# test: simulate and visualize 
+
+model = FloatingSpace(2)
+x0 = generate_config(model, [0.0;0.0;1.0;pi/2], fill.(pi/4,model.nb));
+
+Tf =6
+dt = 0.005
+N = Int(Tf/dt)
+
+mech = vis_mech_generation(model)
+x = x0
+λ_init = zeros(5*model.nb)
+λ = λ_init
+U = 0.3*rand(6+model.nb)
+# U[7] = 0.0001
+steps = Base.OneTo(Int(N))
+storage = CD.Storage{Float64}(steps,length(mech.bodies))
+for idx = 1:N
+    println("step: ",idx)
+    x1, λ1 = discrete_dynamics!(model,x, U, λ, dt)
+    println(norm(fdyn(model,x1, x, U, λ1, dt)))
+    println(norm(g(model,x1)))
+    setStates!(model,mech,x1)
+    for i=1:model.nb+1
+        storage.x[i][idx] = mech.bodies[i].state.xc
+        storage.v[i][idx] = mech.bodies[i].state.vc
+        storage.q[i][idx] = mech.bodies[i].state.qc
+        storage.ω[i][idx] = mech.bodies[i].state.ωc
+    end
+    x = x1
+    λ = λ1
+end
+visualize(mech,storage, env = "editor")
