@@ -1133,6 +1133,11 @@ function propagate_config!(model::FloatingSpace, x⁺, x, dt)
     return 
 end
 
+function Altro.is_converged(model::FloatingSpace, x)
+    c = g(model,x)
+    return norm(c) < 1e-6
+end
+
 # x is the current state, x⁺ is the next state
 # given current state x and current U
 # use newton's method to solve for the vel part of x and the next state x⁺
@@ -1304,7 +1309,7 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::FloatingSpace,
     x1, λ1 = discrete_dynamics(model,  x, u, λ_init, dt)
 
     Dfmtx = Dfdyn(model,x1, x, u, λ1, dt)
-    ∇f .= -Dfmtx[:,1:n]\Array(Dfmtx[:,n+1:end])
+    ∇f .= -Array(Dfmtx[:,1:n])\Array(Dfmtx[:,n+1:end])
 
     # index of q in n̄
     ind = BitArray(undef, n̄)
@@ -1312,8 +1317,8 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::FloatingSpace,
         ind[(i-1)*12 .+ (1:3)] .= 1
         ind[(i-1)*12 .+ (7:9)] .= 1
     end
-    Dgmtx = Dg(model, x1)
-    attiG = state_diff_jac(model,x1)
+    Dgmtx = Array(Dgp1(model, x1,dt))
+    attiG = Array(state_diff_jac(model,x1))
     # subattiG = attiG[get_configs_ind(model),ind]
     # G[:,ind] .= Dgmtx[:,get_configs_ind(model)]*subattiG
     G .= Dgmtx*attiG
