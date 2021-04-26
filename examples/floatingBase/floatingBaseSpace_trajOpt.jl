@@ -2,11 +2,11 @@ include("floatingBaseSpace.jl")
 using Profile
 using TimerOutputs
 const to = TimerOutput()
-model = FloatingSpace()
+model = FloatingSpaceOrth(2)
 n,m = size(model)
 x0 = generate_config(model, [0.01;0.01;0.01;0.01], fill.(0.01,model.nb))
 
-xf = generate_config(model, [1.0;1.0;1.0;pi/4], fill.(pi/4,model.nb))
+xf = generate_config(model, [0.3;0.3;1.0;pi/6], fill.(pi/6,model.nb))
 
 # trajectory 
 N = 100   
@@ -31,7 +31,38 @@ opts = SolverOptions(verbose=7, static_bp=0, iterations=150, cost_tolerance=1e-4
 ilqr = Altro.iLQRSolver(prob, opts);
 TimerOutputs.enable_debug_timings(Altro)
 Altro.timeit_debug_enabled()
+Altro.initialize!(ilqr)
 solve!(ilqr);
+
+
+# n,m,N = size(ilqr)
+# J = Inf
+# _J = TO.get_J(ilqr.obj)
+# J_prev = sum(_J)
+# grad_only = false
+# J = Altro.step!(ilqr, J_prev, grad_only)
+# to = ilqr.stats.to
+# init = ilqr.opts.reuse_jacobians  # force recalculation if not reusing
+# @timeit_debug to "diff jac"     TO.state_diff_jacobian!(ilqr.G, ilqr.model, ilqr.Z)
+
+# @timeit_debug to "dynamics jac" TO.dynamics_expansion!(Altro.integration(ilqr), ilqr.D, ilqr.model, ilqr.Z)
+
+# @timeit_debug to "err jac"      TO.error_expansion!(ilqr.D, ilqr.model, ilqr.G)
+# @timeit_debug to "cost exp"     TO.cost_expansion!(ilqr.quad_obj, ilqr.obj, ilqr.Z, init, true)
+# @timeit_debug to "cost err"     TO.error_expansion!(ilqr.E, ilqr.quad_obj, ilqr.model, ilqr.Z, ilqr.G)
+# @timeit_debug to "backward pass" ΔV = Altro.backwardpass!(ilqr)
+# @timeit_debug to "forward pass" Altro.forwardpass!(ilqr, ΔV, J_prev)
+
+
+# k = 1
+# if ilqr.Z[k].dt == 0
+#     z = copy(ilqr.Z[k])
+#     z.dt = ilqr.Z[1].dt
+#     Altro.discrete_jacobian_MC!(Altro.integration(ilqr), ilqr.D[k].∇f, ilqr.D[k].G, ilqr.model, z)
+# else
+#     Altro.discrete_jacobian_MC!(Altro.integration(ilqr), ilqr.D[k].∇f, ilqr.D[k].G, ilqr.model, ilqr.Z[k])
+# end
+
 
 
 X_list = states(ilqr)
