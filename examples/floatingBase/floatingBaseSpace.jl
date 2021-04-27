@@ -55,6 +55,7 @@ struct FloatingSpace{R,T,n,n̄,p,nd,n̄d} <: LieGroupModelMC{R}
     fdyn_vec::Vector{T}
     Dfmtx::Matrix{T}
     fdyn_attiG::Matrix{T}
+    λ_tmp::Vector{T}
 
     function FloatingSpace{R,T}(nb,_joint_directions) where {R<:Rotation, T<:Real}
         # problem size
@@ -99,6 +100,7 @@ struct FloatingSpace{R,T,n,n̄,p,nd,n̄d} <: LieGroupModelMC{R}
         fdyn_attiG = zeros(T,nd,n̄d)
         body_mass_mtx = diagm([m0,m0,m0])
         arm_mass_mtx = diagm([m1,m1,m1])
+        λ_tmp = zeros(T,np)
 
 
         new{R,T,n,n̄,np,nd,n̄d}(m0, body_size, m1, 0.1, arm_length, 
@@ -116,7 +118,8 @@ struct FloatingSpace{R,T,n,n̄,p,nd,n̄d} <: LieGroupModelMC{R}
             attiG,
             fdyn_vec,
             Dfmtx,
-            fdyn_attiG
+            fdyn_attiG,
+            λ_tmp
         )
     end
     function FloatingSpace()
@@ -1593,7 +1596,7 @@ end
 # begin
 #     using Random
 #     Random.seed!(123)
-#     model = FloatingSpace(4)
+#     model = FloatingSpace(24)
 #     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
 #     dr = pi/14
 #     x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], fill.(pi/4+dr,model.nb))
@@ -1873,15 +1876,31 @@ end
 # visualize(mech,storage, env = "editor")
 
 # overload functions for Altro
+# TODO: try to reuse previous λ_init
 function RD.discrete_dynamics(::Type{Q}, model::FloatingSpace, x, u, t, dt) where Q
-    λ_init = zeros(5*model.nb)
-    x1, _ = discrete_dynamics(model,  x, u, λ_init, dt)
+    # _init = zeros(5*model.nb)
+    # init the initial lambda for the first time step. assume no time step is smaller than 1e-7
+    if (t <= 1e-7)
+        model.λ_tmp .= 0
+    end
+    x1, λ1 = discrete_dynamics(model,  x, u, model.λ_tmp, dt)
+    model.λ_tmp .=λ1
     return x1
+end
+function Altro.discrete_dynamics_MC(::Type{Q}, model::FloatingSpace, x, u, t, dt) where Q
+    # _init = zeros(5*model.nb)
+    # init the initial lambda for the first time step. assume no time step is smaller than 1e-7
+    if (t <= 1e-7)
+        model.λ_tmp .= 0
+    end
+    x1, λ1 = discrete_dynamics(model,  x, u, model.λ_tmp, dt)
+    model.λ_tmp .=λ1
+    return x1,λ1
 end
 
 
-function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::FloatingSpace,
-    z::AbstractKnotPoint{T,N,M′}) where {T,N,M′,Q<:RobotDynamics.Explicit}
+function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::FloatingSpace,
+    z::AbstractKnotPoint{T,N,M′}, x⁺, λ) where {T,N,M′,Q<:RobotDynamics.Explicit}
 
     n,m = size(model)
     n̄ = state_diff_size(model)
@@ -1889,11 +1908,11 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::FloatingSpace,
     u = control(z)
     dt = z.dt
     @assert dt != 0
-    λ_init = 1e-5*randn(5*model.nb)
-    x1, λ1 = discrete_dynamics(model,  x, u, λ_init, dt)
+    # λ_init = 1e-5*randn(5*model.nb)
+    # x1, λ1 = discrete_dynamics(model,  x, u, λ_init, dt)
 
-    Dfdyn!(model,x1, x, u, λ1, dt)
-    ldiv!(∇f, factorize(model.Dfmtx[:,1:n]), -model.Dfmtx[:,n+1:end])
+    Dfdyn!(model,x⁺, x, u, λ, dt)
+    ldiv!(Dexp.∇f, factorize(model.Dfmtx[:,1:n]), -model.Dfmtx[:,n+1:end])
 
     # index of q in n̄
     ind = BitArray(undef, n̄)
@@ -1901,10 +1920,10 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, ∇f, G, model::FloatingSpace,
         ind[(i-1)*12 .+ (1:3)] .= 1
         ind[(i-1)*12 .+ (7:9)] .= 1
     end
-    Dgp1!(model, x1,dt)
-    state_diff_jac!(model,x1)
+    Dgp1!(model, x⁺,dt)
+    state_diff_jac!(model,x⁺)
     # subattiG = attiG[get_configs_ind(model),ind]
     # G[:,ind] .= Dgmtx[:,get_configs_ind(model)]*subattiG
     # G .= Dgmtx*attiG
-    mul!(G, model.Dgmtx, model.attiG)
+    mul!(Dexp.G, model.Dgmtx, model.attiG)
 end
