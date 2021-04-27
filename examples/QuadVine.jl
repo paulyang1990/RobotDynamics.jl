@@ -127,7 +127,7 @@ function max_constraints_jacobian(model::QuadVine{R}, x) where R
         # ∂c∂qb
         qb = rot[i+1]
         d[3] = -l[i+1]/2
-        J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qa)
+        J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qb)
         
         for j=1:3
             J[row+j, col+j] = 1 # ∂c∂xa = I
@@ -198,8 +198,14 @@ end
 function torques(model::QuadVine, x⁺, x, u)
     nb = model.nb
     ind = [(4 + 3*(i-1)) .+ (1:3) for i=1:nb-1]
-    return [RobotZoo.moments(model.quadrotor, x, u),
+    # return [RobotZoo.moments(model.quadrotor, x, u),
+    #         [u[ind[i]] for i=1:nb-1]...]
+
+    # version for transferring moments
+    τ = [RobotZoo.moments(model.quadrotor, x, u),
             [u[ind[i]] for i=1:nb-1]...]
+    τ[1:end-1] -= τ[2:end] 
+    return τ
 end
 
 function get_vels(model::QuadVine, x)

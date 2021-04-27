@@ -127,7 +127,7 @@ function max_constraints_jacobian(model::QuadVine{R}, x) where R
         # ∂c∂qb
         qb = rot[i+1]
         d[3] = -l[i+1]/2
-        J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qa)
+        J[row .+ (1:3), col .+ (10:12)] = RS.∇rotate(qb, d)*RS.∇differential(qb)
         
         for j=1:3
             J[row+j, col+j] = 1 # ∂c∂xa = I
