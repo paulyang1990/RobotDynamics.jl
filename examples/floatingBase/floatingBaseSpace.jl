@@ -2921,32 +2921,32 @@ function discrete_dynamics(model::FloatingSpace, x, u, λ_init, dt)
 end
 
 # test dynamics simulation
-begin
+# begin
 
-    model = FloatingSpace(10)
-    n,m = size(model)
-    n̄ = state_diff_size(model)
-    @show n
-    @show n̄
-    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
+#     model = FloatingSpace(10)
+#     n,m = size(model)
+#     n̄ = state_diff_size(model)
+#     @show n
+#     @show n̄
+#     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
 
-    U = 0.01*rand(6+model.nb)
-    dt = 0.001;
-    λ_init = zeros(5*model.nb)
-    λ = λ_init
-    x = x0
-    @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
-    @show fdyn(model,x1, x, U, λ, dt)
-    # println(norm(fdyn(model,x1, x, u, λ, dt)))
-    x = x0;
-    for i=1:5
-        println("step: ",i)
-        @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
-        println(norm(fdyn(model,x1, x, U, λ, dt)))
-        println(norm(g(model,x1)))
-        x = x1
-    end
-end
+#     U = 0.01*rand(6+model.nb)
+#     dt = 0.001;
+#     λ_init = zeros(5*model.nb)
+#     λ = λ_init
+#     x = x0
+#     @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
+#     @show fdyn(model,x1, x, U, λ, dt)
+#     # println(norm(fdyn(model,x1, x, u, λ, dt)))
+#     x = x0;
+#     for i=1:5
+#         println("step: ",i)
+#         @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
+#         println(norm(fdyn(model,x1, x, U, λ, dt)))
+#         println(norm(g(model,x1)))
+#         x = x1
+#     end
+# end
 
 # test: simulate and visualize 
 
