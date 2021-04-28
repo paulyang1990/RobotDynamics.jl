@@ -341,6 +341,7 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
     # initial guess
     λ = zeros(nc)
     x⁺ = Vector(x)
+    Δs = zeros(nc+nv)
 
     x⁺_new, λ_new = copy(x⁺), copy(λ)
 
@@ -352,7 +353,7 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
         err_vec = fc(model, x⁺, x, u, λ, dt)
         err = norm(err_vec)
         F = fc_jacobian(model, x⁺, x, u, λ, dt)
-        Δs = F\err_vec
+        ldiv!(Δs, factorize(F), err_vec)
        
         # line search
         j=0

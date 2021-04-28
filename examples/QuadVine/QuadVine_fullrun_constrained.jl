@@ -1,7 +1,9 @@
 include("QuadVine.jl")
 include("Quad_vis.jl")
 
-# saved results: @load "quadvine_constrained_fullrun.jld2" X U
+# saved results: 
+# using JLD2
+# @load "quadvine_constrained_fullrun.jld2" X U
 
 # model and timing
 model = QuadVine(2) 
@@ -50,7 +52,8 @@ prob = Problem(model, obj, x0, tf, x0=x0, constraints=conSet);
 # u0 = trim_controls(model)
 # U0 = [SVector{m}(u0) for k = 1:N-1]
 using JLD2
-@load "quadvine_unconstrained_full_run.jld2" U0
+@load "quadvine_unconstrained_full_run.jld2" U
+U0 = deepcopy(U)
 initial_controls!(prob, U0)
 rollout!(prob);
 # plot_traj(states(prob), controls(prob))
@@ -62,6 +65,14 @@ opts = SolverOptions(verbose=7, static_bp=0,
         cost_tolerance_intermediate=1e-2,
         constraint_tolerance=1e-3,
         projected_newton=false)
+
+# unconstrained solve
+# ilqr = Altro.iLQRSolver(prob, opts);
+# set_options!(ilqr, iterations=5, cost_tolerance=1e-4, constraint_tolerance=1e-3)
+# solve!(ilqr);
+# X,U = states(ilqr), controls(ilqr)
+# using JLD2
+# @save "quadvine_unconstrained_full_run.jld2" X U
 
 # solve with Altro
 altro = ALTROSolver(prob, opts);
