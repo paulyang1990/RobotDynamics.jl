@@ -2,7 +2,7 @@ include("floatingBaseSpace.jl")
 using Profile
 using TimerOutputs
 const to = TimerOutput()
-model = FloatingSpaceOrth(2)
+model = FloatingSpace()
 n,m = size(model)
 x0 = generate_config(model, [0.01;0.01;0.01;0.01], fill.(0.01,model.nb))
 
@@ -34,6 +34,26 @@ Altro.timeit_debug_enabled()
 Altro.initialize!(ilqr)
 solve!(ilqr);
 
+"""
+ilqr.stats.to for FloatingSpace()
+ ────────────────────────────────────────────────────────────────────────
+                                 Time                   Allocations      
+                         ──────────────────────   ───────────────────────
+    Tot / % measured:         88.3s / 13.7%           8.49GiB / 37.9%    
+
+ Section         ncalls     time   %tot     avg     alloc   %tot      avg
+ ────────────────────────────────────────────────────────────────────────
+ forward pass        18    5.44s  45.0%   302ms   2.57GiB  79.8%   146MiB
+ dynamics jac        18    2.92s  24.2%   162ms    109MiB  3.31%  6.06MiB
+ backward pass       18    2.82s  23.3%   157ms    362MiB  11.0%  20.1MiB
+   calc ctg       1.78k    2.02s  16.7%  1.13ms    192MiB  5.82%   110KiB
+   calc gains     1.78k    798ms  6.61%   448μs    171MiB  5.18%  98.1KiB
+ diff jac            18    466ms  3.86%  25.9ms    104MiB  3.17%  5.80MiB
+ cost err            18    405ms  3.35%  22.5ms   89.8MiB  2.72%  4.99MiB
+ err jac             18   29.6ms  0.25%  1.65ms     0.00B  0.00%    0.00B
+ cost exp            18   2.93ms  0.02%   163μs     0.00B  0.00%    0.00B
+ ────────────────────────────────────────────────────────────────────────
+"""
 
 # n,m,N = size(ilqr)
 # J = Inf
