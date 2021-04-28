@@ -22,7 +22,7 @@ const CC = ConstrainedControl
 # the robot is body_link     =>      arm_1     ==>     arm_2    ...   ==>      arm_nb 
 # t                        joint1             joint2       ...     joint_nb
 # the arm extends along positive x direction
-struct FloatingSpace{R,T,n,n̄,p,nd,n̄d} <: LieGroupModelMC{R}
+struct FloatingSpace{R,T} <: LieGroupModelMC{R}
     body_mass::T
     body_size::T
     arm_mass::T
@@ -338,7 +338,7 @@ struct FloatingSpace{R,T,n,n̄,p,nd,n̄d} <: LieGroupModelMC{R}
         dGqbTλdqb = zeros(T,3,4)
 
 
-        new{R,T,n,n̄,np,nd,n̄d}(m0, body_size, m1, 0.1, arm_length, 
+        new{R,T}(m0, body_size, m1, 0.1, arm_length, 
             body_mass_mtx, arm_mass_mtx,
             Diagonal(1 / 12 * m0 * diagm([0.5^2 + 0.5^2;0.5^2 + 0.5^2;0.5^2 + 0.5^2])),  # body inertia
             Diagonal(1 / 12 * m1 * diagm([0.1^2 + 0.1^2;0.1^2 + 1.0^2;1.0^2 + 0.1^2])),   # arm inertia
@@ -2826,7 +2826,7 @@ function discrete_dynamics(model::FloatingSpace, x, u, λ_init, dt)
     err = 0
     err_new = 0
 
-    max_iters, line_iters, ϵ = 200, 30, 1e-6
+    max_iters, line_iters, ϵ = 50, 10, 1e-6
     for i=1:max_iters  
         # Newton step    
         # 31 = 26 + 5
