@@ -11,6 +11,8 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 const RS = Rotations
 
+include("helper.jl")
+
 struct QuadVine{R,T} <: LieGroupModelMC{R}
     quadrotor::RobotZoo.Quadrotor{R}
     masses::Array{T,1}
@@ -21,6 +23,7 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
     g::T # gravity
     nb::Int # number of rigid bodies
     p::Int # constraint force dimension
+    liestate::RD.LieState
  
     function QuadVine{R,T}(masses, lengths, radii, inertias) where {R<:Rotation, T<:Real} 
         @assert length(masses) == length(lengths) == length(radii) == length(inertias)
@@ -34,7 +37,8 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
             km=0.0245,
             bodyframe=false,
             info=Dict{Symbol,Any}())
-        new(quadrotor, masses, lengths, radii, inertias, 9.81, nb, 3*(nb-1))
+        liestate = RD.LieState(R,(fill(3, nb)..., Int(6*nb)))
+        new(quadrotor, masses, lengths, radii, inertias, 9.81, nb, 3*(nb-1),liestate)
     end 
 end
 QuadVine(n) = QuadVine{UnitQuaternion{Float64},Float64}(ones(n+1), [.2; ones(n)], [1;fill(.1,n)], fill(Diagonal(ones(3)),n+1))
@@ -42,7 +46,7 @@ QuadVine() = QuadVine(2)
 
 Altro.config_size(model::QuadVine) = 7*model.nb
 Lie_P(model::QuadVine) = (fill(3, model.nb)..., Int(6*model.nb))
-RD.LieState(model::QuadVine{R}) where R = RD.LieState(R,Lie_P(model))
+RD.LieState(model::QuadVine{R}) where R = model.liestate
 RD.control_dim(model::QuadVine) = 7
 
 function trim_controls(model)
@@ -69,10 +73,10 @@ end
 function max_constraints(model::QuadVine{R}, x) where R
     nq = config_size(model)
     P = Lie_P(model)
-    lie = RD.LieState(UnitQuaternion{eltype(x)}, (P[1:end-1]..., 0))
+    # lie = RD.LieState(UnitQuaternion{eltype(x)}, (P[1:end-1]..., 0))
 
-    pos = RD.vec_states(lie, x) 
-    rot = RD.rot_states(lie, x) 
+    pos = RD.vec_states(model.liestate, x) 
+    rot = RD.rot_states(model.liestate, x) 
 
     l = model.lengths
     c = zeros(eltype(x), model.p)
@@ -112,7 +116,8 @@ function max_constraints_jacobian(model::QuadVine{R}, x) where R
     P = Lie_P(model)
     l = model.lengths
     d = zeros(T, 3)
-    rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x)
+    # rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x)
+    rot = RD.rot_states(model.liestate, x)
     J = zeros(T, nc, nv)
     for i=1:nb-1
         # shift vals
@@ -197,15 +202,15 @@ end
 
 function torques(model::QuadVine, x⁺, x, u)
     nb = model.nb
-    return [RobotZoo.moments(model.quadrotor, x, u),
+    return [RobotZoo.moments(model.quadrotor, x, u)-u[5:7],
             [u[5:7] for i=1:nb-1]...]
 end
 
 function get_vels(model::QuadVine, x)
     nb = model.nb
-    vec = RD.vec_states(model, x)[end]    
-    vs = [vec[6*(i-1) .+ (1:3)] for i=1:nb]
-    ωs = [vec[6*(i-1) .+ (4:6)] for i=1:nb]
+    nq = config_size(model)   
+    vs = [x[nq+6*(i-1) .+ (1:3)] for i=1:nb]
+    ωs = [x[nq+6*(i-1) .+ (4:6)] for i=1:nb]
     return vs, ωs
 end
 
@@ -216,6 +221,7 @@ function propagate_config!(model::QuadVine{R}, x⁺::Vector{T}, x, dt) where {R,
 
     vec = RD.vec_states(model, x)
     rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, P), x)
+    # rot = RD.rot_states(model.liestate, x)
 
     vs⁺, ωs⁺ = get_vels(model, x⁺)
     for i=1:nb
@@ -277,19 +283,74 @@ function fc(model::QuadVine, x⁺, x, u, λ, dt)
     return [f;c]
 end
 
-function fc_jacobian(model::QuadVine, x⁺, x, u, λ, dt)
+function fc_jacobian!(F, model::QuadVine, x⁺, x, u, λ, dt)
     nq, nv, nc = mc_dims(model)
+    nb = model.nb
 
-    function fc_aug(s)
-        # Unpack
-        _x⁺ = convert(Array{eltype(s)}, x⁺)
-        _x⁺[nq .+ (1:nv)] = s[1:nv]
-        _λ = s[nv .+ (1:nc)]
+    # function fc_aug(s)
+    #     # Unpack
+    #     _x⁺ = convert(Array{eltype(s)}, x⁺)
+    #     _x⁺[nq .+ (1:nv)] = s[1:nv]
+    #     _λ = s[nv .+ (1:nc)]
 
-        propagate_config!(model, _x⁺, x, dt)
-        fc(model, _x⁺, x, u, _λ, dt)
+    #     propagate_config!(model, _x⁺, x, dt)
+    #     fc(model, _x⁺, x, u, _λ, dt)
+    # end
+    # ForwardDiff.jacobian(fc_aug, [x⁺[nq .+ (1:nv)];λ])
+
+    ls = model.lengths
+    ms = model.masses
+    Is = model.inertias
+    d = zeros(3)
+    # rot = RD.rot_states(RD.LieState(UnitQuaternion{eltype(x)}, Lie_P(model)), x)
+    rot = RD.rot_states(model.liestate, x)
+
+    vs⁺, ωs⁺ = get_vels(model, x⁺)
+
+    F .= 0
+
+    for i=1:nb
+        shift = 6*(i-1)
+
+        # df_vel/dv⁺
+        F[shift .+ (1:3), shift .+ (1:3)] = ms[i]/dt*I(3)
+
+        # df_vel/dω⁺
+        f_vel1_aug(_ω⁺) = sqrt(4/dt^2-_ω⁺'_ω⁺)*Is[i]*_ω⁺ + cross(_ω⁺,Is[i]*_ω⁺) 
+        F[shift .+ (4:6), shift .+ (4:6)] += ForwardDiff.jacobian(f_vel1_aug, ωs⁺[i])
+
+        i == nb && continue
+
+        r_shift = 3*(i-1)
+        λt = λ[r_shift .+ (1:3)]
+
+        # dg/dv⁺
+        F[nv + r_shift .+ (1:3), shift .+ (1:3)] = dt*I(3) # body 1
+        F[nv + r_shift .+ (1:3), shift + 6 .+ (1:3)] = -dt*I(3) # body 2
+
+        ## rotation derivatives with body i
+        d[3] = -ls[i]/2
+        rot⁺, ∇rot, dqdw = dq⁺dw⁺(ωs⁺[i], rot[i], d, dt) 
+
+        # dg/dω⁺
+        F[nv + r_shift .+ (1:3), shift .+ (4:6)] = ∇rot*dqdw
+        
+        # dJ'λ/dω
+        F[shift .+ (4:6), shift .+ (4:6)] -= ∂Gqbᵀλ∂qb(rot⁺,λt,d)*dqdw
+        
+        ## rotation derivatives with body i+1
+        d[3] = -ls[i+1]/2
+        rot⁺, ∇rot, dqdw = dq⁺dw⁺(ωs⁺[i+1], rot[i+1], d, dt) 
+
+        # dg/dω⁺
+        F[nv + r_shift .+ (1:3), shift + 6 .+ (4:6)] = ∇rot*dqdw
+
+        # dJ'λ/dω
+        F[shift+6 .+ (4:6), shift+6 .+ (4:6)] -= ∂Gqbᵀλ∂qb(rot⁺,λt,d)*dqdw
+        
     end
-    ForwardDiff.jacobian(fc_aug, [x⁺[nq .+ (1:nv)];λ])
+
+    F[1:nv, nv+1:end] = -max_constraints_jacobian(model, x⁺)'
 end
 
 function line_step!(model::QuadVine, x⁺_new, λ_new, x⁺, λ, Δs, x, dt)
@@ -334,7 +395,9 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
     # initial guess
     λ = zeros(nc)
     x⁺ = Vector(x)
-
+    Δs = zeros(nc+nv)
+    F = zeros(nc+nv, nc+nv)
+    
     x⁺_new, λ_new = copy(x⁺), copy(λ)
 
     max_iters, line_iters, ϵ = 100, 20, 1e-6
@@ -344,9 +407,10 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
         # Newton step    
         err_vec = fc(model, x⁺, x, u, λ, dt)
         err = norm(err_vec)
-        F = fc_jacobian(model, x⁺, x, u, λ, dt)
-        Δs = F\err_vec
-       
+        fc_jacobian!(F, model, x⁺, x, u, λ, dt)
+        # Δs = F\err_vec
+        ldiv!(Δs, factorize(F), err_vec)
+
         # line search
         j=0
         err_new = err + 1        
@@ -427,8 +491,27 @@ function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)
     fs = forces(model,x⁺,x,u) 
     τs = torques(model,x⁺,x,u)
 
-    f_vel_aug(_x⁺) = -max_constraints_jacobian(model, _x⁺)'*λ
-    a_p[nq .+ (1:nv),1:nq] = ForwardDiff.jacobian(f_vel_aug, x⁺[1:nq])
+    # f_vel_aug(_x⁺) = -max_constraints_jacobian(model, _x⁺)'*λ
+    # a_p[nq .+ (1:nv),1:nq] = ForwardDiff.jacobian(f_vel_aug, x⁺[1:nq])
+    rot⁺ = [SVector{4}(x⁺[7*(i-1) .+ (4:7)]) for i=1:nb]
+    d = zeros(3)
+    for i=1:nb-1
+        r_shift = nq + 6*(i-1)
+        c_shift = 7*(i-1)
+        λt = λ[3*(i-1) .+ (1:3)]
+
+        # link i
+        d[3] = -model.lengths[i]/2
+        if i == 1
+            a_p[r_shift .+ (4:6), c_shift .+ (4:7)] = -∂Gqbᵀλ∂qb(rot⁺[i], λt, d)
+        else
+            a_p[r_shift .+ (4:6), c_shift .+ (4:7)] -= ∂Gqbᵀλ∂qb(rot⁺[i], λt, d)
+        end
+
+        # link i+1
+        d[3] = -model.lengths[i+1]/2
+        a_p[r_shift+6 .+ (4:6), c_shift+7 .+ (4:7)] = -∂Gqbᵀλ∂qb(rot⁺[i+1], λt, d) 
+    end
 
     for i=1:nb
         r_shift = nq + 6*(i-1)
@@ -457,7 +540,8 @@ function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)
                         -2*RobotZoo.moments(model.quadrotor, z[1:7], z[8:11])]
             jac = ForwardDiff.jacobian(fτ_aug, [x[1:7]; u[1:4]])
             a_p[r_shift .+ (1:6), n .+ (1:7)] = jac[1:6, 1:7] # df_dx
-            a_p[r_shift .+ (1:6), 2n .+ (1:4)] = jac[1:6, 8:11] # df_du
+            a_p[r_shift .+ (1:6), 2n .+ (1:4)] = jac[1:6, 8:11] # df_du 1:4
+            a_p[r_shift .+ (4:6), 2n .+ (5:7)] = 2*Matrix(I,3,3) # df_du 5:7
         else # vine
             a_p[r_shift .+ (4:6), 2n .+ (5:7)] = -2*Matrix(I,3,3) 
         end
