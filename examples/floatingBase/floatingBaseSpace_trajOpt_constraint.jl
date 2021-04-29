@@ -1,0 +1,133 @@
+include("floatingBaseSpace.jl")
+using Profile
+using TimerOutputs
+model = FloatingSpaceOrth(3)
+n,m = size(model)
+x0 = generate_config(model, [0.01;0.01;0.01;0.01], fill.(0.01,model.nb))
+
+xf = generate_config(model, [0.3;0.3;1.0;pi/6], fill.(pi/6,model.nb))
+
+# TODO run these functions to use them to trigger compile 
+n,m = size(model)
+n̄ = state_diff_size(model)
+@show n
+@show n̄
+x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
+
+U = 0.01*rand(6+model.nb)
+dt = 0.001;
+λ_init = zeros(5*model.nb)
+λ = λ_init
+x = x0
+@time x1, λ = discrete_dynamics(model,x, U, λ, dt)
+@time fdyn(model,x1, x, U, λ, dt)
+# println(norm(fdyn(model,x1, x, u, λ, dt)))
+x = x0;
+for i=1:5
+    println("step: ",i)
+    @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
+    println(norm(fdyn(model,x1, x, U, λ, dt)))
+    println(norm(g(model,x1)))
+    x = x1
+end
+
+# trajectory 
+N = 100   
+dt = 0.005                  # number of knot points
+tf = (N-1)*dt           # final time
+
+U0 = @SVector fill(0.00001, m)
+U_list = [U0 for k = 1:N-1]
+
+x0 = generate_config(model, [0.01;0.01;0.01;0.01], fill.(0.01,model.nb))
+
+xf = generate_config(model, [0.3;0.3;1.0;pi/6], fill.(pi/6,model.nb))
+
+# objective
+Qf = Diagonal(@SVector fill(550., n))
+Q = Diagonal(@SVector fill(1e-2, n))
+R = Diagonal(@SVector fill(1e-3, m))
+costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-1) for i=1:N]
+costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=550.0)
+obj = Objective(costfuns);
+
+# constraints
+# Create Empty ConstraintList
+conSet = ConstraintList(n,m,N)
+
+#  limit the velocity of the last link 
+# index of the last link
+vmax = 8.0
+statea_inds!(model, model.nb+1)
+p = 3
+A = zeros(p,n+m)
+A[:,model.v_ainds] = I(3)
+b = zeros(p)
+b .= vmax
+b2 = zeros(p)
+b2 .= -vmax
+
+lin_lower = LinearConstraint(n,m,A,b, Inequality())
+lin_upper = LinearConstraint(n,m,-A,-b2, Inequality())
+
+add_constraint!(conSet, lin_lower, 1:N)
+add_constraint!(conSet, lin_upper, 1:N)
+
+const to = TimerOutput()
+# # problem
+prob = Problem(model, obj, xf, tf, x0=x0, constraints=conSet);
+
+initial_controls!(prob, U_list)
+opts = SolverOptions(verbose=7, static_bp=0, iterations=150, cost_tolerance=1e-4, constraint_tolerance=1e-4)
+altro = ALTROSolver(prob, opts)
+set_options!(altro, show_summary=true)
+solve!(altro);
+
+X_list = states(altro)
+U_list = controls(altro)
+
+using Plots
+# plot all controls
+plot(1:N-1, U_list)
+
+# a final simulation pass to get "real" state trajectory
+λ_init = zeros(5*model.nb)
+λ = λ_init
+Xfinal_list = copy(X_list)
+Xfinal_list[1] = SVector{n}(x0)
+for idx = 1:N-1
+    println("step: ",idx)
+    x1, λ1 = discrete_dynamics(model,Xfinal_list[idx], U_list[idx], λ, dt)
+    println(norm(fdyn(model,x1, Xfinal_list[idx], U_list[idx], λ1, dt)))
+    println(norm(g(model,x1)))
+    Xfinal_list[idx+1] = SVector{n}(x1)
+    λ = λ1
+end
+
+# plot velocity of the last link
+statea_inds!(model, model.nb+1)
+# p = [Xfinal_list[i][model.v_ainds[1]] for i=1:N]
+# plot(1:N, p)
+# p = [Xfinal_list[i][model.v_ainds[2]] for i=1:N]
+# plot!(1:N, p)
+p = zeros(N,3)
+for dim=1:3
+p[:,dim] .= [Xfinal_list[i][model.v_ainds[dim]] for i=1:N]
+end
+plot(1:N, p)
+
+
+
+mech = vis_mech_generation(model)
+steps = Base.OneTo(Int(N))
+storage = CD.Storage{Float64}(steps,length(mech.bodies))
+for idx = 1:N
+    setStates!(model,mech,Xfinal_list[idx])
+    for i=1:model.nb+1
+        storage.x[i][idx] = mech.bodies[i].state.xc
+        storage.v[i][idx] = mech.bodies[i].state.vc
+        storage.q[i][idx] = mech.bodies[i].state.qc
+        storage.ω[i][idx] = mech.bodies[i].state.ωc
+    end
+end
+visualize(mech,storage, env = "editor")

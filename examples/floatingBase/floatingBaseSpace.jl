@@ -5,8 +5,8 @@ using StaticArrays, LinearAlgebra
 using SparseArrays
 using BenchmarkTools
 using Test
-using Altro
 using TrajectoryOptimization
+using Altro
 using Plots
 using ConstrainedDynamics
 using ConstrainedDynamicsVis

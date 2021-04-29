@@ -51,16 +51,27 @@ costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-1) for 
 costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=550.0)
 obj = Objective(costfuns);
 
+# constraints
+# Create Empty ConstraintList
+conSet = ConstraintList(n,m,N)
+# constraint 1, Control Bounds
+# bnd = BoundConstraint(n,m, u_min=fill(-150,m), u_max=fill(150,m))
+# add_constraint!(conSet, bnd, 1:N-1)
+
+# constraint 2, limit the velocity of the tip 
+# linear constraint on link nb+1
+# bnd = BoundConstraint(n,m, u_min=fill(-150,m), u_max=fill(150,m))
+# add_constraint!(conSet, bnd, 1:N-1)
+
 const to = TimerOutput()
 # # problem
-prob = Problem(model, obj, xf, tf, x0=x0);
-opts = SolverOptions(verbose=7, static_bp=0, iterations=150, cost_tolerance=1e-4)
-ilqr = Altro.iLQRSolver(prob, opts);
-TimerOutputs.enable_debug_timings(Altro)
-Altro.timeit_debug_enabled()
-Altro.initialize!(ilqr)
-solve!(ilqr);
-ilqr.stats.to
+prob = Problem(model, obj, xf, tf, x0=x0, constraints=conSet);
+
+initial_controls!(prob, U_list)
+opts = SolverOptions(verbose=7, static_bp=0, iterations=150, cost_tolerance=1e-4, constraint_tolerance=1e-4)
+altro = ALTROSolver(prob, opts)
+set_options!(altro, show_summary=true)
+solve!(altro);
 
 # n,m,N = size(ilqr)
 # J = Inf
@@ -133,9 +144,7 @@ cost exp            20   22.0ms  0.00%  1.10ms     0.00B  0.00%    0.00B
 #     Altro.discrete_jacobian_MC!(Altro.integration(ilqr), ilqr.D[k].∇f, ilqr.D[k].G, ilqr.model, ilqr.Z[k])
 # end
 
-
-
-X_list = states(ilqr)
+X_list = states(altro)
 
 mech = vis_mech_generation(model)
 steps = Base.OneTo(Int(N))
@@ -150,3 +159,37 @@ for idx = 1:N
     end
 end
 visualize(mech,storage, env = "editor")
+
+U_list = controls(altro)
+
+using Plots
+# plot all controls
+plot(1:N-1, U_list)
+
+# a final simulation pass to get "real" state trajectory
+λ_init = zeros(5*model.nb)
+λ = λ_init
+Xfinal_list = copy(X_list)
+Xfinal_list[1] = SVector{n}(x0)
+for idx = 1:N-1
+    println("step: ",idx)
+    x1, λ1 = discrete_dynamics(model,Xfinal_list[idx], U_list[idx], λ, dt)
+    println(norm(fdyn(model,x1, Xfinal_list[idx], U_list[idx], λ1, dt)))
+    println(norm(g(model,x1)))
+    setStates!(model,mech,x1)
+    Xfinal_list[idx+1] = SVector{n}(x1)
+    λ = λ1
+end
+
+# plot velocity of the last link
+statea_inds!(model, model.nb+1)
+# p = [Xfinal_list[i][model.v_ainds[1]] for i=1:N]
+# plot(1:N, p)
+# p = [Xfinal_list[i][model.v_ainds[2]] for i=1:N]
+# plot!(1:N, p)
+p = zeros(N,3)
+for dim=1:3
+p[:,dim] .= [Xfinal_list[i][model.v_ainds[dim]] for i=1:N]
+end
+plot(1:N, p)
+
