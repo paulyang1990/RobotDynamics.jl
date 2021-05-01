@@ -6,6 +6,7 @@ using StaticArrays, LinearAlgebra
 using BenchmarkTools
 using Altro
 using Plots
+using SparseArrays
 
 const TO = TrajectoryOptimization
 const RD = RobotDynamics
@@ -75,16 +76,17 @@ function max_constraints(model::QuadVine{R}, x) where R
     P = Lie_P(model)
     # lie = RD.LieState(UnitQuaternion{eltype(x)}, (P[1:end-1]..., 0))
 
-    pos = RD.vec_states(model.liestate, x) 
-    rot = RD.rot_states(model.liestate, x) 
+    # pos = RD.vec_states(model.liestate, x) 
+    # rot = RD.rot_states(model.liestate, x) 
+    pos, rot = get_configs(model, x)
 
     l = model.lengths
     c = zeros(eltype(x), model.p)
 
     # other links endpoint
     for i=2:model.nb
-        d1 = rot[i-1] * [0;0;-l[i-1]/2]
-        d2 = rot[i] * [0;0;-l[i]/2]
+        d1 = UnitQuaternion(rot[i-1], false) * [0;0;-l[i-1]/2]
+        d2 = UnitQuaternion(rot[i], false) * [0;0;-l[i]/2]
         c[3*(i-2) .+ (1:3)] = (pos[i-1] + d1) - (pos[i] - d2)
     end
     
@@ -116,8 +118,8 @@ function max_constraints_jacobian(model::QuadVine{R}, x) where R
     P = Lie_P(model)
     l = model.lengths
     d = zeros(T, 3)
-    # rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x)
-    rot = RD.rot_states(model.liestate, x)
+    rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x)
+    # rot = RD.rot_states(model.liestate, x)
     J = zeros(T, nc, nv)
     for i=1:nb-1
         # shift vals
@@ -206,6 +208,13 @@ function torques(model::QuadVine, x⁺, x, u)
             [u[5:7] for i=1:nb-1]...]
 end
 
+function get_configs(model::QuadVine, x)
+    nb = model.nb
+    vec = [x[7*(i-1) .+ (1:3)] for i=1:nb]
+    rot = [SVector{4}(x[7*(i-1) .+ (4:7)]) for i=1:nb]
+    return vec, rot
+end
+
 function get_vels(model::QuadVine, x)
     nb = model.nb
     nq = config_size(model)   
@@ -219,10 +228,10 @@ function propagate_config!(model::QuadVine{R}, x⁺::Vector{T}, x, dt) where {R,
     nq, nv, _ = mc_dims(model)
     P = Lie_P(model)
 
-    vec = RD.vec_states(model, x)
-    rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, P), x)
-    # rot = RD.rot_states(model.liestate, x)
-
+    # vec = RD.vec_states(model, x)
+    # rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, P), x)
+    # rot = RD.rot_states(model.liestate, x)  
+    vec, rot = get_configs(model,x)
     vs⁺, ωs⁺ = get_vels(model, x⁺)
     for i=1:nb
         vind = RD.vec_inds(R, P, i)
@@ -307,8 +316,6 @@ function fc_jacobian!(F, model::QuadVine, x⁺, x, u, λ, dt)
 
     vs⁺, ωs⁺ = get_vels(model, x⁺)
 
-    F .= 0
-
     for i=1:nb
         shift = 6*(i-1)
 
@@ -317,7 +324,11 @@ function fc_jacobian!(F, model::QuadVine, x⁺, x, u, λ, dt)
 
         # df_vel/dω⁺
         f_vel1_aug(_ω⁺) = sqrt(4/dt^2-_ω⁺'_ω⁺)*Is[i]*_ω⁺ + cross(_ω⁺,Is[i]*_ω⁺) 
-        F[shift .+ (4:6), shift .+ (4:6)] += ForwardDiff.jacobian(f_vel1_aug, ωs⁺[i])
+        if i==1
+            F[shift .+ (4:6), shift .+ (4:6)] = ForwardDiff.jacobian(f_vel1_aug, ωs⁺[i])
+        else
+            F[shift .+ (4:6), shift .+ (4:6)] += ForwardDiff.jacobian(f_vel1_aug, ωs⁺[i])
+        end
 
         i == nb && continue
 
@@ -346,7 +357,7 @@ function fc_jacobian!(F, model::QuadVine, x⁺, x, u, λ, dt)
         F[nv + r_shift .+ (1:3), shift + 6 .+ (4:6)] = ∇rot*dqdw
 
         # dJ'λ/dω
-        F[shift+6 .+ (4:6), shift+6 .+ (4:6)] -= ∂Gqbᵀλ∂qb(rot⁺,λt,d)*dqdw
+        F[shift+6 .+ (4:6), shift+6 .+ (4:6)] = -∂Gqbᵀλ∂qb(rot⁺,λt,d)*dqdw
         
     end
 
@@ -408,8 +419,8 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
         err_vec = fc(model, x⁺, x, u, λ, dt)
         err = norm(err_vec)
         fc_jacobian!(F, model, x⁺, x, u, λ, dt)
-        # Δs = F\err_vec
-        ldiv!(Δs, factorize(F), err_vec)
+        Δs .= sparse(F)\err_vec
+        # ldiv!(Δs, factorize(F), err_vec)
 
         # line search
         j=0
@@ -601,7 +612,8 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
     all_partials[nq .+ (1:nv), (2n+m) .+ (1:nc)] = -G[:, 1:nv]'
 
     # implicit function theorem
-    ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
+    ∇f .= -sparse(all_partials[:,1:n])\all_partials[:,n+1:end]
+    # ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 end
 
 # compute maximal coordinate configuration given body rotations
@@ -622,6 +634,23 @@ end
 function generate_config(model, θ::Vector{<:Number})
     rotations = UnitQuaternion.(RotX.(θ))
     return generate_config(model, rotations)
+end
+
+function interpolate_config(model, shift, dx, aa::AngleAxis, N)
+    # shift: xyz shift for all configs
+    # dx: final xyz shift of drone
+    # aa: final rotation of vine links
+    # N: length of trajectory
+    N -= 1
+    nq, nv, nc = mc_dims(model)
+    X_track = map(0:N) do i 
+        rots = fill(AngleAxis(aa.theta*i/N, aa.axis_x, aa.axis_y, aa.axis_z, false), model.nb)
+        rots[1] = one(UnitQuaternion)       
+        x = [generate_config(model, rots); zeros(nv)]
+        shift_pos!(model, x, shift+dx*i/N)
+        x
+    end
+    return X_track    
 end
 
 ## ROLLOUT

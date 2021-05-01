@@ -50,7 +50,7 @@ function jl_aug(s)
     propagate_config!(model, _x⁺, x0, dt)
     -max_constraints_jacobian(model, _x⁺)'λ
 end
-jl_jac= ForwardDiff.jacobian(jl_aug, x⁺[nq .+ (1:nv)])
+# jl_jac= ForwardDiff.jacobian(jl_aug, x⁺[nq .+ (1:nv)])
 
 function fc_aug(s)
     # Unpack
@@ -66,4 +66,27 @@ fc_jac = ForwardDiff.jacobian(fc_aug, [x⁺[nq .+ (1:nv)];λ])
 F = zeros(nc+nv,nc+nv)
 fc_jacobian!(F, model, x⁺, x0, u0, λ, dt)
 extrema(F-fc_jac)
-display(spy(sparse(round.(F-fc_jac,digits=5)), marker=2, legend=nothing, c=palette([:black], 2)))
+# display(spy(sparse(round.(F-fc_jac,digits=5)), marker=2, legend=nothing, c=palette([:black], 2)))
+
+#-----------------------------------------------
+ilqr=altro
+n,m,N = size(ilqr)
+J = Inf
+_J = TO.get_J(ilqr.obj)
+J_prev = sum(_J)
+grad_only = false
+to = ilqr.stats.to
+init = ilqr.opts.reuse_jacobians  # force recalculation if not reusing
+@timeit_debug to "diff jac"     TO.state_diff_jacobian!(ilqr.G, ilqr.model, ilqr.Z)
+@timeit_debug to "dynamics jac" TO.dynamics_expansion!(Altro.integration(ilqr), ilqr.D, ilqr.model, ilqr.Z, ilqr.Λ)
+@timeit_debug to "err jac"      TO.error_expansion!(ilqr.D, ilqr.model, ilqr.G)
+@timeit_debug to "cost exp"     TO.cost_expansion!(ilqr.quad_obj, ilqr.obj, ilqr.Z, init, true)
+@timeit_debug to "cost err"     TO.error_expansion!(ilqr.E, ilqr.quad_obj, ilqr.model, ilqr.Z, ilqr.G)
+@timeit_debug to "backward pass" ΔV = Altro.backwardpass!(ilqr)
+display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
+display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
+
+@timeit_debug to "forward pass" Altro.forwardpass!(ilqr, ΔV, J_prev)
+
+U = controls(ilqr)
+display(plot(hcat(Vector.(U)...)',xlabel="timestep",ylabel="controls"))

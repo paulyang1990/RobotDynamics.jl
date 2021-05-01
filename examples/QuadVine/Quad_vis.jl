@@ -98,7 +98,7 @@ function TrajOptPlots._set_mesh!(vis, m; color=RGBA(.3,.3,.3,1))
     end
 end
 
-function TrajOptPlots.visualize!(vis, model::LieGroupModelMC, x::SVector)
+function TrajOptPlots.visualize!(vis, model::LieGroupModelMC, x)
     pos = RD.vec_states(model, x) 
     rot = RD.rot_states(model, x) 
     for i=1:model.nb
