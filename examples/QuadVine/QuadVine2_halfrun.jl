@@ -66,10 +66,8 @@ display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
 display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
 display(plot(hcat(Vector.(controls(ilqr))...)',xlabel="timestep",ylabel="controls"))
 
-# # animations
-# vis = visualize!(model, states(altro), dt)
-# goal_p = GeometryBasics.Point(SVector{3}(xw[nq-7 .+ (1:3)]))
+# animations
+# vis = visualize!(model, states(ilqr), dt)
+# goal_p = GeometryBasics.Point(SVector{3}(Xtrack[end][nq-7 .+ (1:3)]))
 # goal = GeometryBasics.HyperSphere{3,Float64}(goal_p, .3)
 # setobject!(vis["goal"], goal, MeshPhongMaterial(color=RGBA(1,0,1, .5)))
-# xlim = GeometryBasics.Rect{3,Float64}(Vec(-3.0, -3.0, 0.0), Vec(3+x_max[1], 3+x_max[2], 3.0))
-# setobject!(vis["dronespace"], xlim, MeshPhongMaterial(color=RGBA(0,1,0, .3)))

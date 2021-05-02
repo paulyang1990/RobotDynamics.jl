@@ -36,8 +36,7 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
             motor_dist=0.1750,
             kf=1.0,
             km=0.0245,
-            bodyframe=false,
-            info=Dict{Symbol,Any}())
+            bodyframe=false)
         liestate = RD.LieState(R,(fill(3, nb)..., Int(6*nb)))
         new(quadrotor, masses, lengths, radii, inertias, 9.81, nb, 3*(nb-1),liestate)
     end 
