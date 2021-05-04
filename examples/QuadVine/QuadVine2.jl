@@ -419,6 +419,7 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
         err = norm(err_vec)
         fc_jacobian!(F, model, x⁺, x, u, λ, dt)
         Δs .= sparse(F)\err_vec
+        # Δs .= F\err_vec
         # ldiv!(Δs, factorize(F), err_vec)
 
         # line search
@@ -635,15 +636,17 @@ function generate_config(model, θ::Vector{<:Number})
     return generate_config(model, rotations)
 end
 
-function interpolate_config(model, shift, dx, aa::AngleAxis, N)
+function interpolate_config(model, shift, dx, aa::AngleAxis, k, N)
     # shift: xyz shift for all configs
     # dx: final xyz shift of drone
     # aa: final rotation of vine links
+    # k: start index for rotating vine
     # N: length of trajectory
     N -= 1
     nq, nv, nc = mc_dims(model)
     X_track = map(0:N) do i 
-        rots = fill(AngleAxis(aa.theta*i/N, aa.axis_x, aa.axis_y, aa.axis_z, false), model.nb)
+        angle = i < k ? 0 : aa.theta*(i-k)/(N-k)
+        rots = fill(AngleAxis(angle, aa.axis_x, aa.axis_y, aa.axis_z, false), model.nb)
         rots[1] = one(UnitQuaternion)       
         x = [generate_config(model, rots); zeros(nv)]
         shift_pos!(model, x, shift+dx*i/N)

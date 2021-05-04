@@ -38,7 +38,7 @@ function rescale_contents(obj_path::String; scale::T=0.1) where T
     return rescaled_contents
 end
 
-function visualize!(m, Z, Δt)
+function visualize!(m, Z, Δt::Number)
     l, r, nb = m.lengths, m.radii, m.nb
     P = Lie_P(m)
     N = length(Z)
@@ -98,7 +98,7 @@ function TrajOptPlots._set_mesh!(vis, m; color=RGBA(.3,.3,.3,1))
     end
 end
 
-function TrajOptPlots.visualize!(vis, model::LieGroupModelMC, x)
+function TrajOptPlots.visualize!(vis, model::LieGroupModelMC, x::SVector)
     pos = RD.vec_states(model, x) 
     rot = RD.rot_states(model, x) 
     for i=1:model.nb
