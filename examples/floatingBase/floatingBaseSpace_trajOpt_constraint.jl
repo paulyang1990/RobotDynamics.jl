@@ -12,10 +12,10 @@ x0 = generate_config(model, [0.01;0.01;0.01;0.01], fill.(0.01,model.nb))
 xf = generate_config(model, [0.3;0.3;1.0;pi/6], fill.(pi/6,model.nb))
 
 # put solve steps in function 
-begin
+function solve_altro_test(model, x0, xf)
     # trajectory 
     N = 100   
-    dt = 0.005                  # number of knot points
+    dt = 0.01                 # number of knot points
     tf = (N-1)*dt           # final time
 
     U0 = @SVector fill(0.00001, m)
@@ -39,7 +39,7 @@ begin
 
     #  limit the velocity of the last link 
     # index of the last link
-    vmax = 5.0
+    vmax = 2.5
     statea_inds!(model, model.nb+1)
     p = 3
     A = zeros(p,n+m)
@@ -55,7 +55,7 @@ begin
     add_constraint!(conSet, lin_lower, 1:N-1)
     add_constraint!(conSet, lin_upper, 1:N-1)
 
-    const to = TimerOutput()
+    to = TimerOutput()
     # # problem
     prob = Problem(model, obj, xf, tf, x0=x0, constraints=conSet);
 
@@ -71,7 +71,9 @@ begin
     set_options!(altro, show_summary=true)
     solve!(altro);
     aa = 1;;
+    return altro
 end
+altro = solve_altro_test(model, x0, xf)
 
 X_list = states(altro)
 U_list = controls(altro)

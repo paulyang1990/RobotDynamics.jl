@@ -12,7 +12,7 @@ x0 = generate_config(model, [0.01;0.01;0.01;0.01], fill.(0.01,model.nb))
 xf = generate_config(model, [0.3;0.3;1.0;pi/6], fill.(pi/6,model.nb))
 
 # put solve steps in function 
-begin
+function solve_altro_test(model, x0, xf)
        # trajectory 
        N = 100   
        dt = 0.005                  # number of knot points
@@ -44,16 +44,17 @@ begin
            static_bp=0, 
            square_root = true,
            iterations=150, bp_reg=true,
+           constraint_force_reg = 1e-4,
            dJ_counter_limit = 1,
            iterations_inner = 30,
            cost_tolerance=1e-4, constraint_tolerance=1e-4)
        altro = ALTROSolver(prob, opts)
        set_options!(altro, show_summary=true)
        solve!(altro);
-       aa = 1;
+       return altro
 end
 
-# altro = solve_altro_test(model, x0, xf)
+altro = solve_altro_test(model, x0, xf)
 
 
 X_list = states(altro)
