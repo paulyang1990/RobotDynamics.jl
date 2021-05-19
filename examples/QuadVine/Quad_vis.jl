@@ -90,6 +90,7 @@ function TrajOptPlots._set_mesh!(vis, m; color=RGBA(.3,.3,.3,1))
     rescaled_contents = rescale_contents(obj_path, scale=quad_scaling)
 
     scaled_obj = MeshFileGeometry(rescaled_contents, "obj")
+    color = (color === nothing ? RGBA(.3,.3,.3,1) : color)
     setobject!(vis["link1"], scaled_obj, MeshPhongMaterial(color=color))
 
     for i=2:nb
