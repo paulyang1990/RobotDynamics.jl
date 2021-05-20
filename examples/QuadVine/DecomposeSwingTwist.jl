@@ -1,6 +1,6 @@
 using LinearAlgebra, Rotations, StaticArrays
 
-# swing after twist decompostion
+################################# swing after twist decompostion #################################
 # Algo 1 from https://arxiv.org/pdf/1506.05481.pdf
 # angle axis from https://github.com/JuliaGeometry/Rotations.jl/blob/master/src/angleaxis_types.jl
 function bend_twist_decomp(q)    
@@ -56,13 +56,17 @@ qa = rand(UnitQuaternion)
 qb = rand(UnitQuaternion)
 θ_ta, axis_ba, θ_ba = bend_twist_decomp(conj(qa)*qb) # qb in body frame a
 θ_tb, axis_bb, θ_bb = bend_twist_decomp(conj(qb)*qa) # qa in body grame b
-@assert θ_ta == -θ_tb
+@assert θ_ta ≈ -θ_tb
 @assert conj(qb)*qa*axis_ba ≈ -axis_bb
-@assert θ_ba == θ_bb
+@assert θ_ba ≈ θ_bb
 
 @assert AngleAxis(θ_bb, axis_bb...) ≈ AngleAxis(-θ_ba, (conj(qb)*qa*axis_ba)...)
 
+################################# Stiffness and damping #################################
 function torques!(τa, τb, qa, qb, ωa, ωb, K, C)
+    qa = UnitQuaternion(qa, false)
+    qb = UnitQuaternion(qb, false)
+    
     # decompostion in body a frame
     θ_ta, axis_ba, θ_ba = bend_twist_decomp(conj(qa)*qb)
 
@@ -117,9 +121,9 @@ torques!(τa, τb, qa, qb, ωa, ωb, K, C)
 qa = one(UnitQuaternion)
 qb = UnitQuaternion(RotX(pi/2))
 ωa = zeros(3)
-ωb = [1.,0,0]
+ωb = [0.,1,0]
 τa = zeros(3)
 τb = zeros(3)
 torques!(τa, τb, qa, qb, ωa, ωb, K, C)
-@assert τa ≈ [pi/2,1,0] # fix
-@assert τb ≈ [-1,pi/2,0] # fix
+@assert τa ≈ [pi/2,0,1] # fix
+@assert τb ≈ [-pi/2,-1,0] # fix
