@@ -75,7 +75,7 @@ function KC_torques(qb, ωb, K, C)
     return τb
 end
 
-function KC_torques(qa::Array, qb::Array, ωa, ωb, K, C)
+function KC_torques(qa, qb, ωa, ωb, K, C)
     qa = UnitQuaternion(qa, false)
     qb = UnitQuaternion(qb, false)
     
@@ -97,24 +97,24 @@ function KC_torques(qa::Array, qb::Array, ωa, ωb, K, C)
     return τa, τb
 end
 
-function KC_torques!(τb, qb::Array, ωb, K, C)
+function KC_torques!(τb, qb, ωb, K, C)
     τb .+= KC_torques(qb, ωb, K, C)
 end
 
-function KC_torques!(τa, τb, qa::Array, qb::Array, ωa, ωb, K, C)
+function KC_torques!(τa, τb, qa, qb, ωa, ωb, K, C)
     τa_, τb_ = KC_torques(qa, qb, ωa, ωb, K, C)
     τa .+= τa_
     τb .+= τb_
 end
 
-function KC_jacobian(qb::Array, ωb, K, C)
+function KC_jacobian(qb, ωb, K, C)
     function KC_aug(x)
         KC_torques(x[1:4], x[5:7], K, C)        
     end
     ForwardDiff.jacobian(KC_aug, [qb;ωb])
 end
 
-function KC_jacobian(qa::Array, qb::Array, ωa, ωb, K, C)
+function KC_jacobian(qa, qb, ωa, ωb, K, C)
     function KC_aug(x)
         τa, τb = KC_torques(x[1:4], x[5:8], x[9:11], x[12:14], K, C)     
         return [τa;τb]   
@@ -168,5 +168,5 @@ KC_torques!(τa, τb, Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C
 @assert τb ≈ [-pi/2,-1,0] # fix
 
 using ForwardDiff
-KC_jacobian(Vector(Rotations.params(qb)), ωb, K, C)
-KC_jacobian(Vector(Rotations.params(qa)), Vector(Rotations.params(qb)), ωa, ωb, K, C)
+KC_jacobian(Rotations.params(qb), ωb, K, C)
+KC_jacobian(Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)

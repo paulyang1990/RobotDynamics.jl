@@ -46,7 +46,9 @@ function f_imp(z)
 end
 auto_partials = ForwardDiff.jacobian(f_imp, [x⁺;z.z;λ])
 DExp.all_partials ≈ auto_partials
-display(spy(sparse(round.(DExp.all_partials - auto_partials,digits=5)), marker=2, legend=nothing, c=palette([:black], 2)))
+if !(DExp.all_partials ≈ auto_partials)
+    display(spy(sparse(round.(DExp.all_partials - auto_partials,digits=5)), marker=2, legend=nothing, c=palette([:black], 2)))
+end
 
 #-----------------------------------------------
 using SparseArrays

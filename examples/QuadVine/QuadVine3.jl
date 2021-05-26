@@ -121,8 +121,8 @@ function max_constraints_jacobian(model::QuadVine{R}, x) where R
     P = Lie_P(model)
     l = model.lengths
     d = zeros(T, 3)
-    # rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x) # use this if using ForwardDiff
-    rot = RD.rot_states(model.liestate, x) # use this if not using ForwardDiff
+    rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x) # use this if using ForwardDiff
+    # rot = RD.rot_states(model.liestate, x) # use this if not using ForwardDiff
     J = zeros(T, nc, nv)
     for i=1:nb-1
         # shift vals
@@ -208,13 +208,13 @@ end
 function torques(model::QuadVine, x⁺, x, u)
     nb = model.nb
     τ = [RobotZoo.moments(model.quadrotor, x, u)-u[5:7],
-            fill(u[5:7],nb-1)...]
+            [u[5:7] for i=1:nb-1]...]
     
     # stiffness and damping at spherical joints
     xs, qs = get_configs(model, x)
     vs, ωs = get_vels(model, x)
     for i=1:model.nb-1
-        torques!(τ[i], τ[i+1], qs[i], qs[i+1], ωs[i], ωs[i+1], model.K, model.C)
+        KC_torques!(τ[i], τ[i+1], qs[i], qs[i+1], ωs[i], ωs[i+1], model.K, model.C)
     end
     return τ
 end
@@ -504,6 +504,7 @@ end
 function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)    
     nb = model.nb
     nq, nv, nc = mc_dims(model)
+    n,m = size(model)
 
     ms = model.masses
     Is = model.inertias
@@ -516,9 +517,10 @@ function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)
 
     # f_vel_aug(_x⁺) = -max_constraints_jacobian(model, _x⁺)'*λ
     # a_p[nq .+ (1:nv),1:nq] = ForwardDiff.jacobian(f_vel_aug, x⁺[1:nq])
+    rot = [SVector{4}(x[7*(i-1) .+ (4:7)]) for i=1:nb]
     rot⁺ = [SVector{4}(x⁺[7*(i-1) .+ (4:7)]) for i=1:nb]
     d = zeros(3)
-    for i=1:nb-1
+    for i=1:nb-1 # d(J'λ)/dx⁺
         r_shift = nq + 6*(i-1)
         c_shift = 7*(i-1)
         λt = λ[3*(i-1) .+ (1:3)]
@@ -568,6 +570,30 @@ function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)
         else # vine
             a_p[r_shift .+ (4:6), 2n .+ (5:7)] = -2*Matrix(I,3,3) 
         end
+    end
+
+    # Stiffness and damping
+    for i=1:nb-1        
+        KC_jac = KC_jacobian(rot[i], rot[i+1], ωs[i], ωs[i+1], model.K, model.C)
+
+        qa_cols = (n + 7*(i-1)) .+ (4:7) # cols of quaternion for body a (and dskipping over x⁺)
+        ωa_cols = (n + nq + 6*(i-1)) .+ (4:6) # cols of ω for body a (and skipping over x⁺)
+        
+        f_vel_rows = (nq + 6*(i-1)) .+ (4:6) # rows of f_vel for body a (and skipping over f_pos)
+        if i==1 
+            a_p[f_vel_rows, qa_cols] = -2KC_jac[1:3, 1:4] # overwrite dωa/dqa
+        else 
+            a_p[f_vel_rows, qa_cols] -= 2KC_jac[1:3, 1:4] # ADD on dωa/dqa
+        end
+        a_p[f_vel_rows, 7 .+ qa_cols] = -2KC_jac[1:3, 5:8] # overwrite dωa/dqb        
+        a_p[f_vel_rows, ωa_cols] -= 2KC_jac[1:3, 9:11] # ADD on dωa/dωa        
+        a_p[f_vel_rows, 6 .+ ωa_cols] = -2KC_jac[1:3, 12:14] # overwrite dωa/dωb
+        
+        f_vel_rows = (nq + 6*i) .+ (4:6) # rows of f_vel for body b (and skipping over f_pos)
+        a_p[f_vel_rows, qa_cols] = -2KC_jac[4:6, 1:4] # overwrite dωb/dqa       
+        a_p[f_vel_rows, 7 .+ qa_cols] = -2KC_jac[4:6, 5:8] # overwrite dωb/dqb
+        a_p[f_vel_rows, ωa_cols] = -2KC_jac[4:6, 9:11] # overwrite dωb/dωa
+        a_p[f_vel_rows, 6 .+ ωa_cols] -= 2KC_jac[4:6, 12:14] # ADD on dωb/dωb
     end
 end
 
