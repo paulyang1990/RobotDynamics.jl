@@ -63,24 +63,63 @@ qb = rand(UnitQuaternion)
 @assert AngleAxis(θ_bb, axis_bb...) ≈ AngleAxis(-θ_ba, (conj(qb)*qa*axis_ba)...)
 
 ################################# Stiffness and damping #################################
-function torques!(τa, τb, qa, qb, ωa, ωb, K, C)
+function KC_torques(qb, ωb, K, C)
+    # decompostion in body a frame (world)
+    qb = UnitQuaternion(qb, false)
+    θ_ta, axis_ba, θ_ba = bend_twist_decomp(qb)
+
+    τb = -K*θ_ba*(conj(qb)*qa*axis_ba) # bend stiffness
+    τb[3] = -K[3,3]*θ_ta # twist stiffness
+    τb -= C*ωb # damping
+
+    return τb
+end
+
+function KC_torques(qa::Array, qb::Array, ωa, ωb, K, C)
     qa = UnitQuaternion(qa, false)
     qb = UnitQuaternion(qb, false)
     
     # decompostion in body a frame
     θ_ta, axis_ba, θ_ba = bend_twist_decomp(conj(qa)*qb)
+   
+    # bend stiffness
+    τa = K*θ_ba*axis_ba
+    τb = -K*θ_ba*(conj(qb)*qa*axis_ba)
 
     # twist stiffness
-    τa[3] += K[3,3]*θ_ta
-    τb[3] += -K[3,3]*θ_ta
-
-    # bend stiffness
-    τa .+= K[1,1]*θ_ba*axis_ba
-    τb .+= -K[1,1]*θ_ba*(conj(qb)*qa*axis_ba)
+    τa[3] = K[3,3]*θ_ta
+    τb[3] = -K[3,3]*θ_ta
 
     # damping
     τa .-= C*(ωa - conj(qa)*qb*ωb) # in body frame a
     τb .-= C*(ωb - conj(qb)*qa*ωa) # in body frame b
+
+    return τa, τb
+end
+
+function KC_torques!(τb, qb::Array, ωb, K, C)
+    τb .+= KC_torques(qb, ωb, K, C)
+end
+
+function KC_torques!(τa, τb, qa::Array, qb::Array, ωa, ωb, K, C)
+    τa_, τb_ = KC_torques(qa, qb, ωa, ωb, K, C)
+    τa .+= τa_
+    τb .+= τb_
+end
+
+function KC_jacobian(qb::Array, ωb, K, C)
+    function KC_aug(x)
+        KC_torques(x[1:4], x[5:7], K, C)        
+    end
+    ForwardDiff.jacobian(KC_aug, [qb;ωb])
+end
+
+function KC_jacobian(qa::Array, qb::Array, ωa, ωb, K, C)
+    function KC_aug(x)
+        τa, τb = KC_torques(x[1:4], x[5:8], x[9:11], x[12:14], K, C)     
+        return [τa;τb]   
+    end
+    ForwardDiff.jacobian(KC_aug, [qa;qb;ωa;ωb])
 end
 
 ωa = zeros(3)
@@ -93,7 +132,7 @@ qa = UnitQuaternion(RotZ(pi/8))
 qb = UnitQuaternion(RotZ(pi/4))
 τa = zeros(3)
 τb = zeros(3)
-torques!(τa, τb, qa, qb, ωa, ωb, K, C)
+KC_torques!(τa, τb, Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
 @assert τa ≈ [0,0,pi/8]
 @assert τb ≈ -[0,0,pi/8]
 
@@ -102,7 +141,7 @@ qa = UnitQuaternion(AngleAxis(pi/8, 1, 1, 0))
 qb = UnitQuaternion(AngleAxis(pi/4, 1, 1, 0))
 τa = zeros(3)
 τb = zeros(3)
-torques!(τa, τb, qa, qb, ωa, ωb, K, C)
+KC_torques!(τa, τb, Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
 @assert τa ≈ [pi/8/sqrt(2), pi/8/sqrt(2), 0]
 @assert τb ≈ -[pi/8/sqrt(2), pi/8/sqrt(2), 0]
 
@@ -113,7 +152,7 @@ qb = one(UnitQuaternion)
 ωb = rand(3)
 τa = zeros(3)
 τb = zeros(3)
-torques!(τa, τb, qa, qb, ωa, ωb, K, C)
+KC_torques!(τa, τb, Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
 @assert τa ≈ ωb-ωa
 @assert τb ≈ ωa-ωb
 
@@ -124,6 +163,10 @@ qb = UnitQuaternion(RotX(pi/2))
 ωb = [0.,1,0]
 τa = zeros(3)
 τb = zeros(3)
-torques!(τa, τb, qa, qb, ωa, ωb, K, C)
+KC_torques!(τa, τb, Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
 @assert τa ≈ [pi/2,0,1] # fix
 @assert τb ≈ [-pi/2,-1,0] # fix
+
+using ForwardDiff
+KC_jacobian(Vector(Rotations.params(qb)), ωb, K, C)
+KC_jacobian(Vector(Rotations.params(qa)), Vector(Rotations.params(qb)), ωa, ωb, K, C)
