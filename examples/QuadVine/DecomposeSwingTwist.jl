@@ -107,11 +107,13 @@ function KC_torques!(τa, τb, qa, qb, ωa, ωb, K, C)
     τb .+= τb_
 end
 
+makefinite(x) = isfinite(x) ? x : 0.0
+
 function KC_jacobian(qb, ωb, K, C)
     function KC_aug(x)
         KC_torques(x[1:4], x[5:7], K, C)        
     end
-    ForwardDiff.jacobian(KC_aug, [qb;ωb])
+    makefinite.(ForwardDiff.jacobian(KC_aug, [qb;ωb]))
 end
 
 function KC_jacobian(qa, qb, ωa, ωb, K, C)
@@ -119,7 +121,7 @@ function KC_jacobian(qa, qb, ωa, ωb, K, C)
         τa, τb = KC_torques(x[1:4], x[5:8], x[9:11], x[12:14], K, C)     
         return [τa;τb]   
     end
-    ForwardDiff.jacobian(KC_aug, [qa;qb;ωa;ωb])
+    makefinite.(ForwardDiff.jacobian(KC_aug, [qa;qb;ωa;ωb]))
 end
 
 ωa = zeros(3)
@@ -170,3 +172,4 @@ KC_torques!(τa, τb, Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C
 using ForwardDiff
 KC_jacobian(Rotations.params(qb), ωb, K, C)
 KC_jacobian(Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
+KC_jacobian([1.,0,0,0], [1.,0,0,0], zeros(3), zeros(3), K, C)

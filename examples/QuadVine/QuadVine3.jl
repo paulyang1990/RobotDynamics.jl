@@ -21,8 +21,9 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
     lengths::Array{T,1}
     radii::Array{T,1} 
     inertias::Array{Diagonal{T,Array{T,1}},1}
-    K::Diagonal{T,Array{T,1}}
-    C::Diagonal{T,Array{T,1}}
+    K::Diagonal{T,Array{T,1}} # stiffness
+    C::Diagonal{T,Array{T,1}} # damping
+    B::Array{T,2} # steering mapping
 
     g::T # gravity
     nb::Int # number of rigid bodies
@@ -41,7 +42,10 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
             km=0.0245,
             bodyframe=false)
         liestate = RD.LieState(R,(fill(3, nb)..., Int(6*nb)))
-        new(quadrotor, masses, lengths, radii, inertias, K, C, 9.81, nb, 3*(nb-1),liestate)
+        B = [1 -.5 -.5; 
+            0 sqrt(3)/2 -sqrt(3)/2;
+            0 0 0]
+        new(quadrotor, masses, lengths, radii, inertias, K, C, B, 9.81, nb, 3*(nb-1),liestate)
     end 
 end
 QuadVine(n; k=1., c=.01) = QuadVine{UnitQuaternion{Float64},Float64}(ones(n+1), [.2; ones(n)], 
@@ -207,8 +211,8 @@ end
 
 function torques(model::QuadVine, x⁺, x, u)
     nb = model.nb
-    τ = [RobotZoo.moments(model.quadrotor, x, u)-u[5:7],
-            [u[5:7] for i=1:nb-1]...]
+    τ = [RobotZoo.moments(model.quadrotor, x, u)-model.B*u[5:7],
+            [model.B*u[5:7] for i=1:nb-1]...]
     
     # stiffness and damping at spherical joints
     xs, qs = get_configs(model, x)
@@ -566,9 +570,9 @@ function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)
             jac = ForwardDiff.jacobian(fτ_aug, [x[1:7]; u[1:4]])
             a_p[r_shift .+ (1:6), n .+ (1:7)] = jac[1:6, 1:7] # df_dx
             a_p[r_shift .+ (1:6), 2n .+ (1:4)] = jac[1:6, 8:11] # df_du 1:4
-            a_p[r_shift .+ (4:6), 2n .+ (5:7)] = 2*Matrix(I,3,3) # df_du 5:7
+            a_p[r_shift .+ (4:6), 2n .+ (5:7)] = 2*model.B # df_du 5:7
         else # vine
-            a_p[r_shift .+ (4:6), 2n .+ (5:7)] = -2*Matrix(I,3,3) 
+            a_p[r_shift .+ (4:6), 2n .+ (5:7)] = -2*model.B 
         end
     end
 
