@@ -1,0 +1,14 @@
+Quadvine
+- separate torque controls for each vine link
+
+Quadvine2
+- same torque control for each vine link
+
+Quadvine3
+- add stiffness and damping as f(current state, u)
+- simulate pouch motors as B*u
+- make vine control derviative of torque (for bandwidth limits)
+
+Quadvine4
+- add stiffness and damping as f(next state, u)
+

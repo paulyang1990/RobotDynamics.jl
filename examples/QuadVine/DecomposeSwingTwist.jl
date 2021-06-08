@@ -173,3 +173,18 @@ using ForwardDiff
 KC_jacobian(Rotations.params(qb), ωb, K, C)
 KC_jacobian(Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
 KC_jacobian([1.,0,0,0], [1.,0,0,0], zeros(3), zeros(3), K, C)
+
+# test explicit jacobian
+function dτab_dωab!(M, qa, qb, C)
+    qa = UnitQuaternion(qa, false)
+    qb = UnitQuaternion(qb, false)
+    M[1:3,1:3] -= C
+    M[4:6,4:6] -= C
+    M[1:3,4:6] += C*conj(qa)*qb
+    M[4:6,1:3] += C*conj(qb)*qa
+end
+
+M = zeros(6,6)
+dτab_dωab!(M, Rotations.params(qa), Rotations.params(qb), C)
+kcj = KC_jacobian(Rotations.params(qa), Rotations.params(qb), ωa, ωb, K, C)
+@assert M ≈ kcj[:, 9:end]

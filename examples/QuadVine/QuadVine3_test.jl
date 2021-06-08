@@ -1,3 +1,4 @@
+using Altro: discrete_dynamics
 include("QuadVine3.jl")
 include("Quad_vis.jl")
 
@@ -8,7 +9,7 @@ nq, nv, nc = mc_dims(model)
 n,m = size(model)
 N = 2
 dt = 5e-3
-x0 = [generate_config(model, rand(model.nb)); .1*rand(nv)]
+x0 = [generate_config(model, rand(model.nb)); .1*rand(nv); .1*rand(3)]
 u0 = .1*rand(m)
 x⁺, λ = Altro.discrete_dynamics_MC(PassThrough, model, x0, u0, 0., dt)
 
@@ -32,19 +33,26 @@ diff2 = SizedMatrix{n,n̄}(zeros(n,n̄))
 RD.state_diff_jacobian!(diff2, RD.LieState(model), SVector{n}(x0))
 z = KnotPoint(x0,u0,dt)
 Altro.discrete_jacobian_MC!(PassThrough, DExp, model, z, x⁺, λ)
-# TO.save_tmp!(DExp)
-# TO.error_expansion!(DExp, diff1, diff2)
-# A,B,C,G = TO.error_expansion(DExp, model)
+TO.save_tmp!(DExp)
+TO.error_expansion!(DExp, diff1, diff2)
+A,B,C,G = TO.error_expansion(DExp, model)
 
 function f_imp(z)
+    n_aug = nq+nv+3
     # Unpack
-    _x⁺ = z[1:(nq+nv)]
-    _x = z[(nq+nv) .+ (1:nq+nv)]
-    _u = z[2*(nq+nv) .+ (1:m)]
-    _λ = z[2*(nq+nv)+m .+ (1:nc)]
-    return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt)]
+    _x⁺ = z[1:n_aug]
+    _x = z[n_aug .+ (1:n_aug)]
+    _u = z[2*n_aug .+ (1:m)]
+    _λ = z[2*n_aug+m .+ (1:nc)]
+    f_vine = _x⁺[(nq+nv) .+ (1:3)] - (_x[(nq+nv) .+ (1:3)] + dt * _u[5:7])
+
+    # adjust _u for augmented state
+    _u[5:7] = _x[(nq+nv) .+ (1:3)]
+    return [f_pos(model, _x⁺, _x, _u, _λ, dt); f_vel(model,  _x⁺, _x, _u, _λ, dt); f_vine]
 end
-auto_partials = ForwardDiff.jacobian(f_imp, [x⁺;z.z;λ])
+# auto_partials = ForwardDiff.jacobian(f_imp, [x⁺;z.z;λ])
+using FiniteDiff
+auto_partials = FiniteDiff.finite_difference_jacobian(f_imp, [x⁺;z.z;λ])
 DExp.all_partials ≈ auto_partials
 if !(DExp.all_partials ≈ auto_partials)
     display(spy(sparse(round.(DExp.all_partials - auto_partials,digits=5)), marker=2, legend=nothing, c=palette([:black], 2)))

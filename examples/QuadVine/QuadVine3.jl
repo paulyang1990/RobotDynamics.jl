@@ -29,6 +29,7 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
     nb::Int # number of rigid bodies
     p::Int # constraint force dimension
     liestate::RD.LieState
+    all_partials_main::Array{T,2} # all_partials without considering augmented state
  
     function QuadVine{R,T}(masses, lengths, radii, inertias, K, C) where {R<:Rotation, T<:Real} 
         @assert length(masses) == length(lengths) == length(radii) == length(inertias)
@@ -41,11 +42,13 @@ struct QuadVine{R,T} <: LieGroupModelMC{R}
             kf=1.0,
             km=0.0245,
             bodyframe=false)
-        liestate = RD.LieState(R,(fill(3, nb)..., Int(6*nb)))
+        liestate = RD.LieState(R,(fill(3, nb)..., Int(6*nb+3)))
         B = [1 -.5 -.5; 
             0 sqrt(3)/2 -sqrt(3)/2;
             0 0 0]
-        new(quadrotor, masses, lengths, radii, inertias, K, C, B, 9.81, nb, 3*(nb-1),liestate)
+        nc = 3*(nb-1) # dimension of λ
+        all_partials_main = zeros(13*nb, 2*13*nb+7+nc)
+        new(quadrotor, masses, lengths, radii, inertias, K, C, B, 9.81, nb, nc, liestate, all_partials_main)
     end 
 end
 QuadVine(n; k=1., c=.01) = QuadVine{UnitQuaternion{Float64},Float64}(ones(n+1), [.2; ones(n)], 
@@ -56,6 +59,9 @@ Altro.config_size(model::QuadVine) = 7*model.nb
 Lie_P(model::QuadVine) = (fill(3, model.nb)..., Int(6*model.nb))
 RD.LieState(model::QuadVine{R}) where R = model.liestate
 RD.control_dim(model::QuadVine) = 7
+RD.state_dim(model::QuadVine) = 13*model.nb + 3
+Altro.mc_dims(model::QuadVine) = Altro.config_size(model), 6*model.nb, model.p
+RD.state_diff_size(model::QuadVine) = 12*model.nb + 3
 
 function trim_controls(model)
     _,m = size(model)
@@ -122,11 +128,10 @@ function max_constraints_jacobian(model::QuadVine{R}, x) where R
     T = eltype(x)
     nb = model.nb
     nq, nv, _ = mc_dims(model)
-    P = Lie_P(model)
     l = model.lengths
     d = zeros(T, 3)
-    rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x) # use this if using ForwardDiff
-    # rot = RD.rot_states(model.liestate, x) # use this if not using ForwardDiff
+    # rot = RD.rot_states(RD.LieState(UnitQuaternion{T}, Lie_P(model)), x) # use this if using ForwardDiff
+    rot = RD.rot_states(model.liestate, x) # use this if not using ForwardDiff
     J = zeros(T, nc, nv)
     for i=1:nb-1
         # shift vals
@@ -326,7 +331,7 @@ function fc_jacobian!(F, model::QuadVine, x⁺, x, u, λ, dt)
     ms = model.masses
     Is = model.inertias
     d = zeros(3)
-    # rot = RD.rot_states(RD.LieState(UnitQuaternion{eltype(x)}, Lie_P(model)), x)
+    # rot = RD.rot_states(RD.LieState(UnitQuaternion{eltype(x)}, Lie_P(model)), x) # use this if using forwarddiff
     rot = RD.rot_states(model.liestate, x)
 
     vs⁺, ωs⁺ = get_vels(model, x⁺)
@@ -413,7 +418,7 @@ end
 #     Δs .= γ*Δs
 # end
 
-function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine, 
+function discrete_dynamics_MC_main(::Type{Q}, model::QuadVine, 
     x, u, t, dt) where {Q<:RobotDynamics.Explicit}
   
     nq, nv, nc = mc_dims(model)
@@ -468,6 +473,13 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine,
     return x⁺, λ
 end
 
+function Altro.discrete_dynamics_MC(::Type{Q}, model::QuadVine, 
+    x, u, t, dt) where {Q<:RobotDynamics.Explicit}
+    u_vine = x[end-2:end]
+    x_main, λ = discrete_dynamics_MC_main(Q, model, x[1:end-3], [u[1:4]; u_vine], t, dt)
+    return [x_main; u_vine + u[5:7] * dt], λ
+end
+
 function RD.discrete_dynamics(::Type{Q}, model::QuadVine, x, u, t, dt) where Q
     x, λ = Altro.discrete_dynamics_MC(Q, model,  x, u, t, dt)
     return x
@@ -508,7 +520,7 @@ end
 function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)    
     nb = model.nb
     nq, nv, nc = mc_dims(model)
-    n,m = size(model)
+    n = nq + nv
 
     ms = model.masses
     Is = model.inertias
@@ -601,19 +613,15 @@ function f_vel_jacobian!(model::QuadVine, a_p, x⁺, x, u, λ, dt)
     end
 end
 
-function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
-    z::AbstractKnotPoint{T,N,M′}, x⁺, λ) where {T,N,M′,Q<:RobotDynamics.Explicit}
+function discrete_jacobian_MC_main!(::Type{Q}, Dexp, model::QuadVine,
+    x⁺, x, u, λ, dt) where {T,N,M′,Q<:RobotDynamics.Explicit}
     
-    all_partials, ∇f, G = Dexp.all_partials, Dexp.∇f, Dexp.G
+    all_partials, G = model.all_partials_main, Dexp.G
 
-    n,m = size(model)
     n̄ = state_diff_size(model)
     nq, nv, nc = mc_dims(model)
-
-    x = state(z) 
-    u = control(z)
-    dt = z.dt
-    @assert dt != 0
+    m = control_dim(model)
+    n = nq + nv
 
     # compute next state and lagrange multiplier
     # x⁺, λ = discrete_dynamics_MC(Q, model, x, u, z.t, dt)
@@ -647,14 +655,46 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
     # f_vel_view = view(all_partials, nq .+ (1:nv), 1:(2n+m+nc))
     # ForwardDiff.jacobian!(f_vel_view, f_vel_aug, [x⁺;x;u;λ])
 
-    G[:,1:n̄-nv] .= max_constraints_jacobian(model, x⁺)
+    G[:,1:nv] .= max_constraints_jacobian(model, x⁺)
 
     # bottom half of all_partials
     f_vel_jacobian!(model, all_partials, x⁺, x, u, λ, dt) 
     all_partials[nq .+ (1:nv), (2n+m) .+ (1:nc)] = -G[:, 1:nv]'
 
+end
+
+function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::QuadVine,
+    z::AbstractKnotPoint{T,N,M′}, x⁺, λ) where {T,N,M′,Q<:RobotDynamics.Explicit}
+    
+    ∇f, a_p, a_p_m = Dexp.∇f, Dexp.all_partials, model.all_partials_main
+    nq, nv, nc = mc_dims(model)
+    m = control_dim(model)
+    n = nq + nv
+    n_aug = n+3
+
+    # compute the all_partials_main (does not consider augmented state)
+    x = state(z) 
+    u = control(z)
+    dt = z.dt
+    @assert dt != 0
+    discrete_jacobian_MC_main!(PassThrough, Dexp, model, x⁺, x[1:n], [u[1:4]; x[n .+ (1:3)]], λ, dt)    
+
+    # fill in all_partials
+    # [d(fpos,fvel)/dx⁺     0      d(fpos,fvel)/dx   d(fpos,fvel)/du_vine   d(fpos,fvel)/du_quad    0     d(fpos,fvel)/dλ
+    #         0             I            0                  -I                      0              -dt*I         0       ]
+    
+    a_p[1:n, 1:n]                = a_p_m[1:n, 1:n]          # d(fpos,fvel)/dx⁺
+    a_p[1:n, n_aug .+ (1:n)]     = a_p_m[1:n, n .+ (1:n)]   # d(fpos,fvel)/dx
+    a_p[1:n, (n_aug+n) .+ (1:3)] = a_p_m[1:n, 2n .+ (5:7)]  # d(fpos,fvel)/du_vine
+    a_p[1:n, 2n_aug .+ (1:4)]    = a_p_m[1:n, 2n .+ (1:4)]  # d(fpos,fvel)/du_quad
+    a_p[1:n, (2n_aug+m) .+ (1:nc)]    = a_p_m[1:n, (2n+m) .+ (1:nc)]  # d(fpos,fvel)/dλ
+
+    a_p[n .+ (1:3), n .+ (1:3)] = I(3) # dfvine/du_vine⁺
+    a_p[n .+ (1:3), (n_aug+n) .+ (1:3)] = -I(3) # dfvine/du_vine
+    a_p[n .+ (1:3), 2n_aug .+ (5:7)] = -dt*I(3) # dfvine/dudot_vine
+
     # implicit function theorem
-    ∇f .= -sparse(all_partials[:,1:n])\all_partials[:,n+1:end]
+    ∇f .= -sparse(a_p[:,1:n_aug])\a_p[:,n_aug .+ (1:n_aug+m+nc)]
     # ∇f .= -all_partials[:,1:n]\all_partials[:,n+1:end]
 end
 

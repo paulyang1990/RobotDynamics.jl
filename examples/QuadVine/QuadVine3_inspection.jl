@@ -12,11 +12,11 @@ tf = (N-1)*dt
 
 # initial and final conditions
 shift = [0,0, sum(model.lengths)+.1]
-x0 = [generate_config(model, zeros(model.nb)); zeros(nv)]
+x0 = [generate_config(model, zeros(model.nb)); zeros(nv); zeros(3)]
 shift_pos!(model, x0, shift)
 @assert norm(max_constraints(model, x0)) < 1e-6
 
-xf = [generate_config(model, pi/2/model.nb * collect(1:model.nb)); zeros(nv)]
+xf = [generate_config(model, pi/2/model.nb * collect(1:model.nb)); zeros(nv); zeros(3)]
 shift_pos!(model, xf, shift)
 @assert norm(max_constraints(model, x0)) < 1e-6
 
@@ -26,9 +26,9 @@ shift_pos!(model, xf, shift)
 # render(vis)
 
 # objective
-Qf = Diagonal(SVector{n}([fill(2.5, nq-7); fill(50, 7); fill(2.5, nv-6); fill(50, 6)]))
-Q = Diagonal(SVector{n}([fill(1e-5, nq); fill(1e-5, nv)]))
-R = Diagonal(SVector{m}([fill(.1,4);.7;.7;10]))
+Qf = Diagonal(SVector{n}([fill(2.5, nq-7); fill(50, 7); fill(2.5, nv-6); fill(50, 6); fill(.7, 3)]))
+Q = Diagonal(SVector{n}([fill(1e-5, nq); fill(1e-5, nv); fill(.7, 3)]))
+R = Diagonal(SVector{m}([fill(.1,4);.7;.7;.7]))
 
 costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf), SVector{m}(trim_controls(model)); w=1e-4) for i=1:N]
 # edit objective
@@ -57,12 +57,14 @@ ilqr = Altro.iLQRSolver(prob, opts);
 set_options!(ilqr, iterations=20)
 solve!(ilqr);
 X = states(ilqr)
+Uvine = [x[end-2:end] for x in X]
 @show norm((xf-X[end])[(nq-7) .+ (1:3)])
 
 # plots
-display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
-display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
+# display(plot(hcat(Vector.(Vec.(ilqr.K[1:end]))...)',legend=false))
+# display(plot(hcat(Vector.(Vec.(ilqr.d[1:end]))...)',legend=false))
 display(plot(hcat(Vector.(controls(ilqr))...)',xlabel="timestep",ylabel="controls"))
+display(plot(hcat(Vector.(Uvine)...)',xlabel="timestep",ylabel="vine controls"))
 
 # animations
 vis = visualize!(model, states(ilqr), dt)
